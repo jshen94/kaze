@@ -16,6 +16,35 @@ import Controls = require('../kaze/controls');
 import Shared = require('./index-server');
 import Components = require('../kaze/components');
 
+import HasDuelZoneCharacterData = Shared.HasDuelZoneCharacterData;
+import DuelZoneCharacterData = Shared.DuelZoneCharacterData;
+
+//////////////////////////////////////////////////
+// Specialized classes
+
+class DuelZoneNetCharacter extends GameScene.NetworkedCharacter implements HasDuelZoneCharacterData {
+    data: DuelZoneCharacterData; 
+
+    constructor(serverId: number, name: string, width: number, height: number) {
+        super(serverId, width, height);
+        this.data = new DuelZoneCharacterData(name);
+        this.refreshName();
+    }
+
+    refreshName(): void {
+        this.name = DuelZoneNetCharacter.getNameKdr(this.data);
+    }
+
+    static getNameKdr(data: DuelZoneCharacterData): string {
+        return `${data.baseName} (${data.kills.toString()}-${data.deaths.toString()})`;
+    }
+}
+
+//////////////////////////////////////////////////
+// Load assets
+
+// Zone settings
+
 let DuelZoneSettings: any = null;
 const importSettings = (r: __WebpackModuleApi.RequireContext) => {
     const keys = r.keys();
@@ -23,8 +52,7 @@ const importSettings = (r: __WebpackModuleApi.RequireContext) => {
 };
 importSettings(require.context('.', false, /settings.json$/));
 
-//////////////////////////////////////////////////
-// Load assets
+// Images
 
 const imageFileToUrl: {[s: string]: string} = {};
 const importAllImages = (r: __WebpackModuleApi.RequireContext) => {
@@ -37,6 +65,8 @@ for (const key in imageFileToUrl) {
     imageFileToSpriteSheet.set(key, new Draw.AnimatedSpriteSheet(imageFileToUrl[key], 1, 1));
 }
 
+// Map
+
 const parsedMapJson: object = require('../../assets/maps/hank.json'); // Webpack will parse
 
 //////////////////////////////////////////////////
@@ -46,9 +76,12 @@ const $root = $('<div />');
 $root.attr('id', 'root');
 $(document.body).append($root); 
 ReactDOM.render(
-    // TODO - Constants for width/height b/c of server side viewport
     <Components.Canvas 
-        id='my-canvas' width='500px' height='500px' isVisible={true} />, $root[0]
+        id='my-canvas' 
+        width={Shared.ViewportWidth + 'px'}
+        height={Shared.ViewportHeight + 'px'}
+        isVisible={true} 
+    />, $root[0]
 );
 
 //////////////////////////////////////////////////
@@ -66,7 +99,7 @@ const playerT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./black.png'], 1, 1
 const floorTileGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson as MapFile.MapFile, imageFileToSpriteSheet, 'floor.png');
 sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(floorTileGrid, 0, 0);
 sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
-sceneData.onCharacterBulletHit = (controller, character, bullet) => {
+sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
     return true; // Make bullet disappear
 };
 sceneData.onBegin = (controller: GameScene.Controller): void => {
@@ -85,10 +118,11 @@ sceneData.onBegin = (controller: GameScene.Controller): void => {
 };
 const scene = GameScene.createGameScene(sceneData);
 
-const addCharacter = (attributes: KazeShared.CharacterInit): Shared.DuelZoneCharacter => {
-    const character = Shared.makeCharacter(attributes.name, attributes.type, attributes.id);
-    character.refreshName();
-    character.setNetworkType(GsNetwork.CharacterNetType.Sync);
+const addCharacter = (attributes: KazeShared.CharacterInit): DuelZoneNetCharacter => {
+    const character = new DuelZoneNetCharacter(
+        attributes.id, attributes.name,
+        Shared.CharacterWidth, Shared.CharacterHeight
+    );
     character.spriteSheets = [playerT];
     character.spriteSheetIndex = 0;
     scene.controller.grid.registerRect(character);
@@ -100,14 +134,13 @@ const deleteCharacter = (id: number): void => {
 };
 
 const spawnBullet = (
-    owner: GameScene.Character, weapon: GameScene.Weapon,
+    owner: GameScene.NetworkedCharacter, weapon: GameScene.Weapon,
     x: number, y: number, vx: number, vy: number
 ): void => {
-    const bullet = new GameScene.Bullet(owner, weapon);
-    bullet.position.x = x;
-    bullet.position.y = y;
-    bullet.velocity.x = vx;
-    bullet.velocity.y = vy;
+    const bullet = new GameScene.Bullet(
+        owner as GameScene.DrawableCharacter, weapon, 
+        new Calcs.Vec2d(vx, vy), new Calcs.Vec2d(x, y)
+    );
     scene.controller.grid.registerDot(bullet);
 };
 
@@ -136,9 +169,9 @@ const onConnect = (result: KazeClient.OnConnectResult): void => {
         if (!_.isNumber(json.kills)) throw 'invalid kd kills';
         if (!_.isNumber(json.deaths)) throw 'invalid kd deaths';
 
-        const character = result.characterMap.get(json.id) as Shared.DuelZoneCharacter;
-        character.kills = json.kills;
-        character.deaths = json.deaths;
+        const character = result.characterMap.get(json.id) as DuelZoneNetCharacter;
+        character.data.kills = json.kills;
+        character.data.deaths = json.deaths;
         character.refreshName();
     }});
 

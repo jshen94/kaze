@@ -23,7 +23,8 @@ export class MessageSource {
 
 export type ServerOptions = {
     port: number;
-    viewport: Vec2d;
+    viewportWidth: number;
+    viewportHeight: number;
     onConnect: (result: OnConnectResult) => void;
     onClose: (result: OnCloseResult) => void;
     setOnUpdate: (onUpdate: (diff: number, c: GameScene.Controller) => void) => void;
@@ -129,10 +130,10 @@ export const startServer = (options: ServerOptions): void => {
             const centerX = client.character.position.x + client.character.size.x;
             const centerY = client.character.position.y + client.character.size.y;
 
-            const x1 = centerX - options.viewport.x / 2;
-            const y1 = centerY - options.viewport.y / 2;
-            const x2 = x1 + options.viewport.x;
-            const y2 = y1 + options.viewport.y;
+            const x1 = centerX - options.viewportWidth / 2;
+            const y1 = centerY - options.viewportHeight / 2;
+            const x2 = x1 + options.viewportWidth;
+            const y2 = y1 + options.viewportHeight;
 
             visibleRects.clear();
 

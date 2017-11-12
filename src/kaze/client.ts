@@ -13,6 +13,8 @@ import LagMaker = require('./lag-maker');
 import Shared = require('./client-server');
 import MessageHandler = MsgHandler.MessageHandler;
 
+import NetworkedCharacter = GameScene.NetworkedCharacter;
+
 const CONTROL_UPLOAD_MS = 1000 / 30;
 const SERVER_FPS = 60;
 const FAKE_LAG_UPLOAD_MS = 0;
@@ -29,11 +31,11 @@ export type ClientOptions = {
     onClose:  () => void;
 
     detachedControls: Controls.Controls;
-    addCharacter: (i: Shared.CharacterInit) => GameScene.Character;
+    addCharacter: (i: Shared.CharacterInit) => NetworkedCharacter;
     deleteCharacter: (id: number) => void;
 
     spawnBullet: (
-        owner: GameScene.Character, weapon: GameScene.Weapon,
+        owner: NetworkedCharacter, weapon: GameScene.Weapon,
         x: number, y: number, vx: number, vy: number
     ) => void;
 
@@ -43,7 +45,7 @@ export type ClientOptions = {
 export type OnConnectResult = {
     ws: WebSocket;
     messageHandler: MessageHandler<Message>;
-    characterMap: Map<number, GameScene.Character>;
+    characterMap: Map<number, NetworkedCharacter>;
     playerId: number;
 }
 
@@ -89,10 +91,10 @@ export const connectToServer = (options: ClientOptions): void => {
     connection.onerror = options.onError;
     connection.onclose = options.onClose;
 
-    const characterMap = new Map<number, GameScene.Character>(); // ID -> Character
-    let player: GameScene.Character | undefined = undefined;
+    const characterMap = new Map<number, NetworkedCharacter>(); // ID -> Character
+    let player: NetworkedCharacter | undefined = undefined;
 
-    const addCharacter = (attributes: Shared.CharacterInit): GameScene.Character => {
+    const addCharacter = (attributes: Shared.CharacterInit): NetworkedCharacter => {
         const character = options.addCharacter(attributes);
         characterMap.set(attributes.id, character);
         return character;
@@ -107,6 +109,8 @@ export const connectToServer = (options: ClientOptions): void => {
         ownerId: number, weaponId: number,
         x: number, y: number, vx: number, vy: number
     ): void => {
+        // Is still found if owner is outside visibility, position of owner is just wrong
+        // Sanity check - ownerId is not the local spatial hash ID
         const owner = characterMap.get(ownerId);
         if (owner === undefined) throw 'invalid networked bullet owner';
         const weapon = options.getWeapon(weaponId);
@@ -195,7 +199,7 @@ export const connectToServer = (options: ClientOptions): void => {
 
         const id = GsNetwork.quickGetCharacterId(view);
         if (characterMap.has(id)) {
-            const character = characterMap.get(id) as GameScene.Character;
+            const character = characterMap.get(id) as NetworkedCharacter;
             GsNetwork.deserialize[GsNetwork.CallType.SyncChar](character.interpolator, view);
         }
     }});

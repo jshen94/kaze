@@ -1,4 +1,3 @@
-
 //////////////////////////////////////////////////
 // Network support for game-scene.ts
 //////////////////////////////////////////////////
@@ -8,131 +7,24 @@ import GameScene = require('./game-scene');
 import Controls = require('./controls');
 import Interpolator = require('./interpolator');
 import Calcs = require('./calcs');
+import SpatialHash = require('./spatial-hash');
+import NetHelpers = require('./net-helpers');
+
 import Vec2d = Calcs.Vec2d;
 import Direction = Controls.Direction;
+import ByteArrayMaker = NetHelpers.ByteArrayMaker;
+import ByteArrayReader = NetHelpers.ByteArrayReader;
 
-export enum CharacterNetType {Sync, Offline}
+// Must be unsigned byte
 export enum CallType {
     SyncChar = 0,
     SyncControls,
     BulletSpawn
-} // value > 0, length < 256
+} 
 
+// Additional networked information which is not interpolated
 export class CharacterPartial {
     constructor(public hp: number) {}
-}
-
-class ByteArrayReader {
-    private index: number = 0;
-    private size: number;
-
-    constructor(private view: DataView) {
-        this.size = view.byteLength;
-    }
-
-    getUint8(): number {
-        const v = this.view.getUint8(this.index);
-        this.index += 1;
-        return v;
-    }
-
-    getUint16(): number {
-        const v = this.view.getUint16(this.index);
-        this.index += 2;
-        return v;
-    }
-
-    getUint32(): number {
-        const v = this.view.getUint32(this.index);
-        this.index += 4;
-        return v;
-    }
-
-    getInt8(): number {
-        const v = this.view.getInt8(this.index);
-        this.index += 1;
-        return v;
-    }
-
-    getInt16(): number {
-        const v = this.view.getInt16(this.index);
-        this.index += 2;
-        return v;
-    }
-
-    getInt32(): number {
-        const v = this.view.getUint32(this.index);
-        this.index += 4;
-        return v;
-    }
-
-    getFloat32(): number {
-        const v = this.view.getFloat32(this.index);
-        this.index += 4;
-        return v;
-    }
-
-    check(): void {
-        if (this.index !== this.size) throw 'size mismatch';
-    }
-}
-
-class ByteArrayMaker {
-    private buffer: ArrayBuffer;
-    private view: DataView;
-    private index: number = 0;
-
-    constructor(private byteSize: number) {
-        this.buffer = new ArrayBuffer(byteSize);
-        this.view = new DataView(this.buffer);
-    }
-
-    addUint8(value: number) {
-        this.view.setUint8(this.index, value);
-        this.index += 1;
-    }
-
-    addUint16(value: number) {
-        this.view.setUint16(this.index, value);
-        this.index += 2;
-    }
-
-    addUint32(value: number) {
-        this.view.setUint32(this.index, value);
-        this.index += 4;
-    }
-
-    addInt8(value: number) {
-        this.view.setInt8(this.index, value);
-        this.index += 1;
-    }
-
-    addInt16(value: number) {
-        this.view.setInt16(this.index, value);
-        this.index += 2;
-    }
-
-    addInt32(value: number) {
-        this.view.setUint32(this.index, value);
-        this.index += 4;
-    }
-
-    addFloat32(value: number) {
-        this.view.setFloat32(this.index, value);
-        this.index += 4;
-    }
-
-    make(): ArrayBuffer {
-        if (this.index !== this.byteSize) throw 'size mismatch';
-        return this.buffer;
-    }
-}
-
-export const serialize: {[i: number]: any} = {};
-export const deserialize: {[i: number]: any} = {};
-
-export const quickGetCharacterId = (view: DataView): number => {
-    return view.getUint32(1); // Must match below
 }
 
 const AIM_DEGREES = 128;
@@ -152,7 +44,7 @@ const numberToAim = (n: number): Vec2d => {
     return v;
 };
 
-// TODO - Autopack
+// TODO - Autopack, move to net-helpers
 
 const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizontal: Direction): number => {
     const positiveV = vertical + 1;
@@ -176,7 +68,7 @@ const unpackControls = (packed: number, controls: Controls.Controls): void => {
     packed >>>= 1;
     controls.horizontal = ((packed & 3) - 1) as Direction;
     packed >>>= 2;
-    controls.vertical = ((packed & 3) - 1) as  Direction;
+    controls.vertical = ((packed & 3) - 1) as Direction;
 }
 
 const testPackUnpackControls = (): void => {
@@ -198,9 +90,17 @@ const testPackUnpackControls = (): void => {
         if (controls.vertical != controls2.vertical) console.error('vertical', controls.vertical, controls2.vertical);
         if (controls.mouse != controls2.mouse) console.error('mouse', controls.mouse, controls2.mouse);
     }
-    console.log('DONE testPackUnpackControls');
+    console.log('done testPackUnpackControls');
 };
-//testPackUnpackControls();
+
+//////////////////////////////////////////////////
+
+export const serialize: {[i: number]: any} = {};
+export const deserialize: {[i: number]: any} = {};
+
+export const quickGetCharacterId = (view: DataView): number => {
+    return view.getUint32(1); // Must match SyncChar calls below
+}
 
 serialize[CallType.SyncChar] = (character: GameScene.Character, diff: number): ArrayBuffer => {
     const maker = new ByteArrayMaker(26);

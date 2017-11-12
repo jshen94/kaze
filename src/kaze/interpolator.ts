@@ -1,5 +1,3 @@
-// TODO - Speed up even when below half...
-
 //////////////////////////////////////////////////
 // Interpolates between server state snapshots
 // Only supports TCP
@@ -94,7 +92,7 @@ export class Interpolator<T> {
     // *t* - The time elapsed since the first snapshot (which has t = 0)
     // Returns a new interpolated snapshot
     interpolate(t: number): InterpolatedSnapshot<T> {
-        if (this.snapshots.length === 0) 'tried to interpolate with 0 snapshots';
+        if (this.snapshots.length === 0) throw 'tried to interpolate with 0 snapshots';
         if (t < 0) throw 't < 0';
         if (this.snapshots.length === 1) {
             const first = this.snapshots[0];

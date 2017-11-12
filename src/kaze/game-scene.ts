@@ -1,4 +1,3 @@
-
 //////////////////////////////////////////////////
 // Main gameplay loop, drawing, physics, etc
 //////////////////////////////////////////////////
@@ -6,7 +5,7 @@
 import Calcs = require('./calcs');
 import Draw = require('./draw');
 import Controls = require('./controls');
-import Interpolator = require('./interpolator');
+import Interpolator_ = require('./interpolator');
 import GsNetwork = require('./game-scene-network');
 import SpatialHash = require('./spatial-hash');
 import FloorTileGrid = require('./floor-tile-grid');
@@ -15,8 +14,7 @@ import Scene = require('./scene');
 import Vec2d = Calcs.Vec2d;
 import Direction = Controls.Direction;
 import BarrierType = FloorTileGrid.BarrierType;
-
-export const NET_SNAPSHOT_MAX: number = 32;
+import Interpolator = Interpolator_.Interpolator;
 
 // Pass to createGameScene to create update loop
 export class GameSceneData {
@@ -36,9 +34,13 @@ export class GameSceneData {
     getFloorTile?: (i: number, j: number) => Draw.AnimatedSpriteSheet | null;
     getBarrierType?: (i: number, j: number) => BarrierType | null;
 
-    // Hooks
+    // Events
     onCharacterBulletHit?: (c: Controller, ch: Character, b: Bullet) => boolean;
+    onNetCharacterBulletHit?: (c: Controller, ch: NetworkedCharacter, b: Bullet) => boolean;
     onCharacterThingCollision?: (c: Controller, ch: Character, t: Thing) => boolean;
+    onNetCharacterThingCollision?: (c: Controller, ch: NetworkedCharacter, t: Thing) => boolean;
+
+    // Hooks
     onUpdate?: (diff: number, c: Controller) => void;
     onBegin?: (c: Controller) => void;
     onFinish?: (c: Controller) => void;
@@ -47,17 +49,27 @@ export class GameSceneData {
 export enum SolidType {NotSolid, BlockAll, BlockCharacter}
 
 export interface HasSpriteSheet {
-    spriteSheetIndex?: number;
-    spriteSheets?: Draw.AnimatedSpriteSheet[];
+    spriteSheetIndex: number;
+    spriteSheets: Draw.AnimatedSpriteSheet[];
 }
 
-let thingCharacterIdCounter = 0;
+export interface DrawableCharacter extends HasSpriteSheet, SpatialHash.Rect {
+    id: number;
+    size: Vec2d;
+    position: Vec2d;
+    aim: Vec2d;
+    hp: number;
+    maxHp: number;
+    type: number;
+    name: string;
+}
 
 export class Thing extends SpatialHash.Rect implements HasSpriteSheet {
-    spriteSheetIndex?: number;
-    spriteSheets?: Draw.AnimatedSpriteSheet[];
+    spriteSheetIndex: number;
+    spriteSheets: Draw.AnimatedSpriteSheet[];
+
     constructor(public solidType: SolidType) {
-        super(thingCharacterIdCounter++, new Vec2d(50, 50), new Vec2d(0, 0));
+        super(new Vec2d(50, 50), new Vec2d(0, 0));
     }
 }
 
@@ -65,8 +77,7 @@ export enum BulletShape {Line, Circle}
 
 export class Weapon {
     private static idCounter: number = 0;
-
-    id: number = Weapon.idCounter++; // 0-255
+    readonly id: number = Weapon.idCounter++; // Must be unsigned byte
     damage: number = 200;
     lifetime: number = 2000;
     color: string = '#00ffff';
@@ -78,22 +89,27 @@ export class Weapon {
     bulletLength: number = 4;
 }
 
-export class Bullet implements SpatialHash.Dot {
-    private static idCounter: number = 0;
-
-    readonly id: number = Bullet.idCounter++;
-    position: Vec2d;
-    velocity: Vec2d;
+export class Bullet extends SpatialHash.Dot {
     lifetime: number;
 
-    constructor(public owner: Character, public weapon: Weapon) {
-        this.position = new Vec2d(owner.position.x + owner.radius, owner.position.y + owner.radius);
-        this.velocity = Vec2d.copy(owner.aim).magnitude(weapon.speed);
+    constructor(
+        public owner: DrawableCharacter,
+        public weapon: Weapon, 
+        public velocity: Vec2d, position: Vec2d) {
+        super(position);
         this.lifetime = weapon.lifetime;
+    }
+
+    static shootFrom(owner: DrawableCharacter, weapon: Weapon): Bullet {
+        return new Bullet(
+            owner, weapon,
+            Vec2d.copy(owner.aim).magnitude(weapon.speed),
+            new Vec2d(owner.position.x + owner.size.x / 2, owner.position.y + owner.size.y / 2)
+        );
     }
 }
 
-export class Character extends SpatialHash.Rect implements HasSpriteSheet {
+export class Character extends SpatialHash.Rect implements DrawableCharacter {
     customBounceMultiplier: number | null = null;
     autoVBounce: boolean = false;
     autoHBounce: boolean = false;
@@ -103,7 +119,6 @@ export class Character extends SpatialHash.Rect implements HasSpriteSheet {
     maxHp: number = 1000;
     hp: number = this.maxHp;
     name: string = 'Character';
-    id: number = thingCharacterIdCounter++;
     type: number = 0;
     
     maxSpeed: number = 87 / 1000; // Pixels / second
@@ -112,7 +127,6 @@ export class Character extends SpatialHash.Rect implements HasSpriteSheet {
     rotateDirection: Direction = Direction.Stationary;
     accel: Vec2d = new Vec2d(0, 0);
     velocity: Vec2d = new Vec2d(0, 0);
-    private _radius: number;  // TODO - Remove
     aim: Vec2d = new Vec2d(0, -1);
     desiredAim: Vec2d = new Vec2d(0, -1);
     horizontal: Direction = Direction.Stationary;
@@ -128,33 +142,29 @@ export class Character extends SpatialHash.Rect implements HasSpriteSheet {
 
     controls: Controls.Controls = new Controls.Controls; 
 
-    networkType: GsNetwork.CharacterNetType; 
-    interpolator: Interpolator.Interpolator<GsNetwork.CharacterPartial> | null;
-    networkT: number | null;
-
-    constructor(radius: number) {
-        super(thingCharacterIdCounter++, new Vec2d(50, 50), new Vec2d(0, 0));
-        this.radius = radius;
-        this.setNetworkType(GsNetwork.CharacterNetType.Offline);
+    constructor(width: number, height: number) {
+        super(new Vec2d(width, height), new Vec2d(0, 0));
     }
+}
 
-    set radius(radius: number) {
-        this._radius = radius;
-        this.size.x = radius * 2;
-        this.size.y = radius * 2;
-    }
+export const NetSnapshotMax = 32;
+export class NetworkedCharacter extends SpatialHash.Rect implements DrawableCharacter {
+    aim: Vec2d = new Vec2d(0, -1);
 
-    get radius(): number {return this._radius;}
+    maxHp: number = 1000;
+    hp: number = this.maxHp;
 
-    setNetworkType(networkType: GsNetwork.CharacterNetType): void {
-        this.networkType = networkType;
-        if (this.networkType === GsNetwork.CharacterNetType.Sync) {
-            this.interpolator = new Interpolator.Interpolator<GsNetwork.CharacterPartial>(NET_SNAPSHOT_MAX);
-            this.networkT = 0;
-        } else if (this.networkType === GsNetwork.CharacterNetType.Offline) {
-            this.interpolator = null;
-            this.networkT = null;
-        }
+    interpolator: Interpolator<GsNetwork.CharacterPartial> = new Interpolator<GsNetwork.CharacterPartial>(NetSnapshotMax);
+    networkT: number = 0;
+
+    type: number = 0;
+    name: string = 'NetCharacter';
+
+    spriteSheetIndex: number;
+    spriteSheets: Draw.AnimatedSpriteSheet[];
+
+    constructor(public readonly serverId: number, width: number, height: number) {
+        super(new Vec2d(width, height), new Vec2d(0, 0));
     }
 }
 
@@ -266,35 +276,32 @@ export const createGameScene = (data: GameSceneData): GameScene => {
             const rectX = rect.position.x - x1;
             const rectY = rect.position.y - y1;
 
-            if (rect instanceof Character) {
-                const character = rect as Character;
+            if (rect instanceof Character || rect instanceof NetworkedCharacter) {
+                const character = rect as DrawableCharacter;
                 const sprite = character.spriteSheets[character.spriteSheetIndex];
+                if (!sprite) throw 'invalid sprite index for character'; 
 
-                if (sprite) {
-                    context.translate(rectX + character.radius, rectY + character.radius);
-                    context.rotate(character.aim.atan2());
-                    sprite.draw(context, -character.radius, -character.radius, character.size.x, character.size.y);
-                    context.setTransform(1, 0, 0, 1, 0, 0); // Identity
-                } else {
-                    Draw.drawRect(context, rectX, rectY, character.size.x, character.size.y, 'white');
-                } 
+                const halfSizeX = character.size.x / 2;
+                const halfSizeY = character.size.y / 2;
+
+                context.translate(rectX + halfSizeX, rectY + halfSizeY);
+                context.rotate(character.aim.atan2());
+                sprite.draw(context, -halfSizeX, -halfSizeY, character.size.x, character.size.y);
+                context.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
 
                 const hpBarY = rectY - 6;
                 const hpBarWidth = character.size.x + 10;
                 const hpBarX = rectX + (character.size.x - hpBarWidth) / 2;
+
                 Draw.drawRect(context, hpBarX, hpBarY, hpBarWidth, 4, '#aa0000');
                 Draw.drawRect(context, hpBarX, hpBarY, (character.hp / character.maxHp) * hpBarWidth, 4, '#00aa00');
                 Draw.drawText(context, rectX + character.size.x / 2, rectY - 22, character.name, '#eeeecc', 'center');
             } else if (rect instanceof Thing) {
                 const thing = rect as Thing;
-                if (thing.spriteSheets !== undefined && thing.spriteSheetIndex !== undefined) {
-                    const sprite = thing.spriteSheets[thing.spriteSheetIndex];
-                    if (sprite) {
-                        sprite.draw(context, thing.position.x, thing.position.y, thing.size.x, thing.size.y);
-                    } else {
-                        Draw.drawRect(context, thing.position.x, thing.position.y, thing.size.x, thing.size.y, '#eeeeee');
-                    }
-                }
+                const sprite = thing.spriteSheets[thing.spriteSheetIndex];
+                if (!sprite) throw 'invalid sprite index for character'; 
+
+                sprite.draw(context, thing.position.x, thing.position.y, thing.size.x, thing.size.y);
             }
 
             return false;
@@ -379,29 +386,9 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         });
     };
 
-    const _updateCharacterCommon = (character: Character, diff: number): void => {
-
-        // Weapons
-
-        character.timeTillShot -= diff;
-        if (character.timeTillShot < 0) character.timeTillShot = 0;
-        if (character.firing) {
-            if (character.shotsBeforeReload >= character.weapon.shots) { 
-                character.timeTillShot = character.weapon.reload;
-                character.shotsBeforeReload = 0;
-            } else if (character.timeTillShot === 0) { 
-                const bullet = new Bullet(character, character.weapon);
-                controller.grid.registerDot(bullet);
-                character.timeTillShot = character.weapon.rate; 
-                character.shotsBeforeReload++;
-            }
-        }
-    };
-
-    const updateNetworkedCharacter = (character: Character, diff: number): void => {
+    const updateNetworkedCharacter = (character: NetworkedCharacter, diff: number): void => {
         const interpolator = character.interpolator;
-        if (interpolator === null || interpolator.length === 0) return;
-        if (character.networkT === null) throw 'interpolator is defined but networkT is not';
+        if (interpolator.length === 0) return;
 
         // Speed up if behind, otherwise potentially permanently
         // playing in the past (because TCP). Appears as insanely high upload delay.
@@ -413,8 +400,6 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         character.position = interpolated.position;
         character.aim = interpolated.aim;
         character.hp = interpolated.other.hp;
-
-        _updateCharacterCommon(character, diff);
     };
 
     const updateLocalCharacter = (character: Character, diff: number): void => {
@@ -546,7 +531,21 @@ export const createGameScene = (data: GameSceneData): GameScene => {
             }
         }
 
-        _updateCharacterCommon(character, diff);
+        // Weapons
+
+        character.timeTillShot -= diff;
+        if (character.timeTillShot < 0) character.timeTillShot = 0;
+        if (character.firing) {
+            if (character.shotsBeforeReload >= character.weapon.shots) { 
+                character.timeTillShot = character.weapon.reload;
+                character.shotsBeforeReload = 0;
+            } else if (character.timeTillShot === 0) { 
+                const bullet = Bullet.shootFrom(character, character.weapon);
+                controller.grid.registerDot(bullet);
+                character.timeTillShot = character.weapon.rate; 
+                character.shotsBeforeReload++;
+            }
+        }
     };
 
     // Returns true to request finish
@@ -557,8 +556,10 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         // Note: If A collides with B, only update one of A or B here
         controller.grid.forEachDot((dot) => {
             if (!(dot instanceof Bullet)) return;
+
             const bullet = dot as Bullet;
             bullet.lifetime -= diff;
+
             if (bullet.lifetime < 0 || controller.grid.isDotOutside(bullet)) {
                 controller.grid.unregisterDot(bullet.id);
             } else {
@@ -568,18 +569,25 @@ export const createGameScene = (data: GameSceneData): GameScene => {
                 controller.grid.loopDotCollideWithRect(bullet, (rect: SpatialHash.Rect) => {
                     if (rect instanceof Character) {
                         const character = rect as Character;
-                        if (!character.off && bullet.owner !== character) {
+                        if (!character.off && bullet.owner.id !== character.id) {
                             if (data.onCharacterBulletHit && data.onCharacterBulletHit(controller, character, bullet)) {
                                 controller.grid.unregisterDot(bullet.id);
                                 return true;
-                            } else {
-                                return false;
-                            }
+                            } 
+                        }
+                    } else if (rect instanceof NetworkedCharacter) {
+                        const character = rect as NetworkedCharacter;
+                        if (bullet.owner.id !== character.id) {
+                            if (data.onNetCharacterBulletHit && data.onNetCharacterBulletHit(controller, character, bullet)) {
+                                controller.grid.unregisterDot(bullet.id);
+                                return true;
+                            } 
                         }
                     } else if (rect instanceof Thing) {
                         const thing = rect as Thing;
                         if (thing.solidType === SolidType.BlockAll) {
                             controller.grid.unregisterDot(bullet.id);
+                            return true;
                         } 
                     }
                     return false;
@@ -588,18 +596,17 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         });
 
         controller.grid.forEachRect((rect: SpatialHash.Rect) => {
-            if (rect instanceof Character) {
-                const character = rect as Character
+            if (rect instanceof Character || rect instanceof NetworkedCharacter) {
+                const character = rect as DrawableCharacter;
+
                 const spriteSheet = character.spriteSheets[character.spriteSheetIndex];
                 if (spriteSheet) spriteSheet.move(diff);
 
-                if (!character.off) {
-                    if (character.networkType === GsNetwork.CharacterNetType.Offline) {
-                        updateLocalCharacter(character, diff);
-                    } else if (character.networkType === GsNetwork.CharacterNetType.Sync) {
-                        updateNetworkedCharacter(character, diff);
-                    } 
-                }
+                if (character instanceof NetworkedCharacter) {
+                    updateNetworkedCharacter(character, diff);
+                } else if (character instanceof Character) {
+                    if (!character.off) updateLocalCharacter(character, diff);
+                } 
             }
         });
 

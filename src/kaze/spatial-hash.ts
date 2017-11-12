@@ -2,13 +2,17 @@ import Calcs = require('./calcs');
 import Vec2d = Calcs.Vec2d;
 
 export class Rect extends Calcs.Rect {
-    constructor(public id: number, size: Vec2d, position: Vec2d) {
+    private static idCounter = 0;
+    readonly id: number = Rect.idCounter++;
+    constructor(size: Vec2d, position: Vec2d) {
         super(size, position);
     }
 }
 
 export class Dot {
-    constructor(public id: number, public position: Vec2d) {}
+    private static idCounter = 0;
+    readonly id: number = Dot.idCounter++;
+    constructor(public position: Vec2d) {}
 }
 
 export class Block {
@@ -186,7 +190,7 @@ export class SpatialHash {
         return this.loopPixels(rect.position.x, rect.position.y, rect.discreteX2, rect.discreteY2, isReading, isFinished); 
     }
 
-    loopDotCollideWithRect(dot: Dot, func: (dot: Dot) => boolean): void {
+    loopDotCollideWithRect(dot: Dot, func: (rect: Rect) => boolean): void {
         this.loopDot(dot, true, (b) => b.forEachDotCollideWithRect(dot, func));
     }
 
