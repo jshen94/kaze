@@ -130,7 +130,7 @@ export const connectToServer = (options: ClientOptions): void => {
                 const json = JSON.parse(me.data);
                 console.assert(json.type, 'invalid json type');
                 messageHandler.emit(json.type, false, json);
-            } else if (me.data instanceof ArrayBuffer){
+            } else if (me.data instanceof ArrayBuffer) {
                 const view = new DataView(me.data);
                 messageHandler.emit(view.getUint8(0), false, view);
             }
@@ -201,6 +201,7 @@ export const connectToServer = (options: ClientOptions): void => {
         if (characterMap.has(id)) {
             const character = characterMap.get(id) as NetworkedCharacter;
             GsNetwork.deserialize[GsNetwork.CallType.SyncChar](character.interpolator, view);
+            character.off = false;
         }
     }});
 

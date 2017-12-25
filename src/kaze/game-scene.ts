@@ -62,6 +62,7 @@ export interface DrawableCharacter extends HasSpriteSheet, SpatialHash.Rect {
     maxHp: number;
     type: number;
     name: string;
+    off: boolean;
 }
 
 export class Thing extends SpatialHash.Rect implements HasSpriteSheet {
@@ -153,6 +154,7 @@ export class NetworkedCharacter extends SpatialHash.Rect implements DrawableChar
 
     maxHp: number = 1000;
     hp: number = this.maxHp;
+    off: boolean = false;
 
     interpolator: Interpolator<GsNetwork.CharacterPartial> = new Interpolator<GsNetwork.CharacterPartial>(NetSnapshotMax);
     networkT: number = 0;
@@ -278,6 +280,8 @@ export const createGameScene = (data: GameSceneData): GameScene => {
 
             if (rect instanceof Character || rect instanceof NetworkedCharacter) {
                 const character = rect as DrawableCharacter;
+                if (character.off) return;
+
                 const sprite = character.spriteSheets[character.spriteSheetIndex];
                 if (!sprite) throw 'invalid sprite index for character'; 
 
@@ -386,7 +390,9 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         });
     };
 
-    const updateNetworkedCharacter = (character: NetworkedCharacter, diff: number): void => {
+    const updateNetworkedCharacter = (
+        character: NetworkedCharacter, diff: number, width: number, height: number
+    ): void => {
         const interpolator = character.interpolator;
         if (interpolator.length === 0) return;
 
@@ -400,6 +406,24 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         character.position = interpolated.position;
         character.aim = interpolated.aim;
         character.hp = interpolated.other.hp;
+
+        // Turn characters out of screen off
+
+        // Center of player
+        const camera = data.camera();
+        const playerCenterX = camera.x + data.cameraOffset.x; 
+        const playerCenterY = camera.y + data.cameraOffset.y;
+
+        // Position of screen corners in world space
+        const x1 = playerCenterX - width / 2;
+        const y1 = playerCenterY - height / 2;
+        const x2 = x1 + width;
+        const y2 = y1 + height;
+
+        if (character.position.x + character.size.x < x1 || character.position.y + character.size.y < y1 || 
+            character.position.x > x2 || character.position.y > y2) {
+            character.off = true;
+        }
     };
 
     const updateLocalCharacter = (character: Character, diff: number): void => {
@@ -549,7 +573,7 @@ export const createGameScene = (data: GameSceneData): GameScene => {
     };
 
     // Returns true to request finish
-    const update = (diff: number): boolean => {
+    const update = (diff: number, width: number, height: number): boolean => {
         // External hook
         if (data.onUpdate) data.onUpdate(diff, controller);
 
@@ -603,7 +627,7 @@ export const createGameScene = (data: GameSceneData): GameScene => {
                 if (spriteSheet) spriteSheet.move(diff);
 
                 if (character instanceof NetworkedCharacter) {
-                    updateNetworkedCharacter(character, diff);
+                    updateNetworkedCharacter(character, diff, width, height);
                 } else if (character instanceof Character) {
                     if (!character.off) updateLocalCharacter(character, diff);
                 } 

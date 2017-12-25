@@ -122,6 +122,7 @@ export const startServer = (options: ServerOptions): void => {
     });
 
     const visibleRects = new Set<SpatialHash.Rect>();
+
     options.setOnUpdate((diff: number, controller: GameScene.Controller) => {
         clientMap.forEach((client: Client, clientWs: WebSocket) => {
             if (clientWs.readyState !== WebSocket.OPEN) return;
