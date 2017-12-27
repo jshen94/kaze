@@ -27,6 +27,17 @@ burstWeapon.rate = 100;
 burstWeapon.bulletShape = GameScene.BulletShape.Line;
 burstWeapon.bulletLength = 10;
 
+export const autoWeapon = new GameScene.Weapon();
+autoWeapon.damage = 10;
+autoWeapon.lifetime = 2000;
+autoWeapon.color = '#ff00aa';
+autoWeapon.speed = 0.2;
+autoWeapon.shots = 25;
+autoWeapon.reload = 2000;
+autoWeapon.rate = 50;
+autoWeapon.bulletShape = GameScene.BulletShape.Circle;
+autoWeapon.bulletLength = 4;
+
 export class DuelZoneCharacterData {
     kills: number = 0;
     deaths: number = 0;

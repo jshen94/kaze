@@ -136,7 +136,8 @@ export class Character extends SpatialHash.Rect implements DrawableCharacter {
 
     timeTillShot: number = 0;
     shotsBeforeReload: number = 0;
-    weapon: Weapon = new Weapon;
+    weapons: Weapon[] = [new Weapon];
+    private weaponIndex: number = 0;
 
     spriteSheetIndex: number = -1;
     spriteSheets: Draw.AnimatedSpriteSheet[] = [];
@@ -145,6 +146,16 @@ export class Character extends SpatialHash.Rect implements DrawableCharacter {
 
     constructor(width: number, height: number) {
         super(new Vec2d(width, height), new Vec2d(0, 0));
+    }
+
+    getCurrentWeapon = (): Weapon => {
+        return this.weapons[this.weaponIndex];
+    }
+
+    setWeaponIndex = (index: number): void => {
+        if (index < this.weapons.length) {
+            this.weaponIndex = index;
+        }
     }
 }
 
@@ -249,7 +260,8 @@ export const createGameScene = (data: GameSceneData): GameScene => {
                     const bullet = dot as Bullet;
                     if (bullet.weapon.bulletShape === BulletShape.Circle) {
                         Draw.drawCircle(context, 
-                            bullet.position.x - x1, bullet.position.y - y1, bullet.weapon.bulletLength / 2, bullet.weapon.color);
+                            bullet.position.x - x1, bullet.position.y - y1,
+                            bullet.weapon.bulletLength / 2, bullet.weapon.color);
                     } else if (bullet.weapon.bulletShape === BulletShape.Line) {
                         const vNorm = Calcs.Vec2d.magnitude(bullet.velocity, 1); 
                         Draw.drawLine(
@@ -560,13 +572,13 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         character.timeTillShot -= diff;
         if (character.timeTillShot < 0) character.timeTillShot = 0;
         if (character.firing) {
-            if (character.shotsBeforeReload >= character.weapon.shots) { 
-                character.timeTillShot = character.weapon.reload;
+            if (character.shotsBeforeReload >= character.getCurrentWeapon().shots) { 
+                character.timeTillShot = character.getCurrentWeapon().reload;
                 character.shotsBeforeReload = 0;
             } else if (character.timeTillShot === 0) { 
-                const bullet = Bullet.shootFrom(character, character.weapon);
+                const bullet = Bullet.shootFrom(character, character.getCurrentWeapon());
                 controller.grid.registerDot(bullet);
-                character.timeTillShot = character.weapon.rate; 
+                character.timeTillShot = character.getCurrentWeapon().rate; 
                 character.shotsBeforeReload++;
             }
         }

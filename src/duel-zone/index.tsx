@@ -103,16 +103,29 @@ sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
     return true; // Make bullet disappear
 };
 sceneData.onBegin = (controller: GameScene.Controller): void => {
+
+    // Timer test
+
+    let ticker = 0;
+    const timeBox = new GameScene.UiBox(['[TimeBox]'], 5, 5, 150);
+    controller.uiBoxes.push(timeBox);
+    setInterval(() => {
+        ticker++;
+        timeBox.lines[0] = ticker.toString();
+    }, 1000);
+
+    // Pop up test
+
     detachedControls.onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'e' && controller.uiBoxes.length === 0) {
+        if (e.key === 'e' && controller.uiBoxes.length === 1) {
             controller.uiBoxes.push(new GameScene.UiBox([
                 '[Test] Accept duel?', '1) Yes', '2) No'
             ], Math.random() * 50, Math.random() * 50, 250));
         }
     };
     detachedControls.onKeyUp = (e: KeyboardEvent) => {
-        if (e.key === 'e' && controller.uiBoxes.length > 0) {
-            controller.uiBoxes.splice(0);
+        if (e.key === 'e' && controller.uiBoxes.length === 2) {
+            controller.uiBoxes.splice(1, 1);
         }
     };
 };
@@ -145,8 +158,10 @@ const spawnBullet = (
 };
 
 const getWeapon = (id: number): GameScene.Weapon => {
-    if (id != Shared.burstWeapon.id) throw 'weapon not supported';
-    return Shared.burstWeapon;
+    // TODO
+    if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
+    else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
+    else throw 'weapon not supported';
 };
 
 const onError = (e: Event): void => {

@@ -19,7 +19,7 @@ export class DuelZoneCharacter extends GameScene.Character implements HasDuelZon
     constructor(name: string, width: number, height: number) {
         super(width, height);
         this.name = name;
-        this.weapon = Shared.burstWeapon;
+        this.weapons = [Shared.burstWeapon, Shared.autoWeapon];
         this.data = new DuelZoneCharacterData(name);
     }
 }
@@ -95,7 +95,12 @@ const onConnect = (result: KazeServer.OnConnectResult): void => {
     };
 };
 
-Scene.playScene({fps: 60, scene});
+Scene.playScene({
+    fps: 60,
+    canvas: new Scene.CanvasSizeSubstitute(Shared.ViewportWidth, Shared.ViewportHeight),
+    scene
+});
+
 KazeServer.startServer({
     port: 1337,
     viewportWidth: Shared.ViewportWidth,

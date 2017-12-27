@@ -46,22 +46,33 @@ const numberToAim = (n: number): Vec2d => {
 
 // TODO - Autopack, move to net-helpers
 
-const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizontal: Direction): number => {
+const MAX_WEAPON_COUNT = 8;
+
+const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizontal: Direction, weaponIndex: number): number => {
+    // console.assert(weaponIndex < MAX_WEAPON_COUNT);
+
     const positiveV = vertical + 1;
     const positiveH = horizontal + 1;
 
-    let twoBytes = 0;
-    twoBytes |= positiveV;
-    twoBytes <<= 2;
-    twoBytes |= positiveH;
-    twoBytes <<= 1;
-    twoBytes |= mouse ? 1 : 0;
-    twoBytes <<= 7;
-    twoBytes |= aimToNumber(aim);
-    return twoBytes;
+    // 2 bytes
+    let b = 0;
+    b |= positiveV; // 2
+    b <<= 2;
+    b |= positiveH; // .. 4
+    b <<= 1;
+    b |= mouse ? 1 : 0; // .. 5
+    b <<= 7;
+    b |= aimToNumber(aim); // .. 12
+    b <<= 3;
+    b |= weaponIndex; // 0-7 // .. 15
+    return b;
 };
 
-const unpackControls = (packed: number, controls: Controls.Controls): void => {
+const unpackControls = (packed: number, character: GameScene.Character): void => {
+    const controls = character.controls;
+    // 2 bytes
+    character.setWeaponIndex(packed & 7);
+    packed >>>= 3; 
     controls.aim = numberToAim(packed & 127);
     packed >>>= 7;
     controls.mouse = (packed & 1) > 0;
@@ -71,6 +82,8 @@ const unpackControls = (packed: number, controls: Controls.Controls): void => {
     controls.vertical = ((packed & 3) - 1) as Direction;
 }
 
+/* 
+// TODO Testing framework, new API
 const testPackUnpackControls = (): void => {
     for (let i = 0; i < 5; ++i) {
         const controls = new Controls.Controls;
@@ -79,8 +92,8 @@ const testPackUnpackControls = (): void => {
         controls.mouse = Math.random() > 0.5;
         controls.aim = new Vec2d(Math.random() * 100, Math.random() * 100);
         const n = packControls(controls.mouse, controls.aim, controls.vertical, controls.horizontal);
-        const twoBytes = new ArrayBuffer(2);
-        const view = new DataView(twoBytes);
+        const b = new ArrayBuffer(2);
+        const view = new DataView(b);
         view.setUint16(0, n);
         const m = view.getUint16(0);
         const controls2 = new Controls.Controls;
@@ -92,6 +105,7 @@ const testPackUnpackControls = (): void => {
     }
     console.log('done testPackUnpackControls');
 };
+*/
 
 //////////////////////////////////////////////////
 
@@ -150,14 +164,14 @@ deserialize[CallType.SyncChar] = (interpolator: Interpolator.Interpolator<Charac
 serialize[CallType.SyncControls] = (controls: Controls.Controls): ArrayBuffer => {
     const maker = new ByteArrayMaker(3);
     maker.addUint8(CallType.SyncControls);
-    maker.addUint16(packControls(controls.mouse, controls.aim, controls.vertical, controls.horizontal));
+    maker.addUint16(packControls(controls.mouse, controls.aim, controls.vertical, controls.horizontal, controls.weaponIndex));
     return maker.make();
 };
 
 deserialize[CallType.SyncControls] = (character: GameScene.Character, view: DataView): void => {
     const reader = new ByteArrayReader(view);
     reader.getUint8();
-    unpackControls(reader.getUint16(), character.controls);
+    unpackControls(reader.getUint16(), character);
     reader.check();
 };
 

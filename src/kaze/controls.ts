@@ -10,6 +10,8 @@ export class Controls {
     vertical: Direction = Direction.Stationary;
     horizontal: Direction = Direction.Stationary;
     aim: Vec2d = new Vec2d(0, -1);
+    weaponIndex: number;
+
     onKeyDown?: (e: KeyboardEvent) => void;
     onKeyUp?: (e: KeyboardEvent) => void;
 
@@ -36,6 +38,8 @@ export class Controls {
             } else if (e.keyCode === 68) {
                 this.right = true;
                 this.horizontal = Direction.Negative;
+            } else if (e.keyCode >= 49 && e.keyCode <= 56) { // 1-8
+                this.weaponIndex = e.keyCode - 49; // 0-7
             }
 
             if (this.onKeyDown) this.onKeyDown(e);

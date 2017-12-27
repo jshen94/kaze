@@ -62,7 +62,7 @@ export const drawCircle = (
 ): void => {
     context.fillStyle = fillStyle;
     context.beginPath();
-    context.arc(Math.floor(x), Math.floor(y), Math.floor(radius), Math.floor(2 * Math.PI), 0, false);
+    context.arc(Math.floor(x), Math.floor(y), Math.floor(radius), 0, Math.floor(2 * Math.PI));
     context.fill();
 };
 
