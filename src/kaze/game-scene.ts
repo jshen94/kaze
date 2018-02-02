@@ -613,7 +613,7 @@ export const createGameScene = (data: GameSceneData): GameScene => {
                         }
                     } else if (rect instanceof NetworkedCharacter) {
                         const character = rect as NetworkedCharacter;
-                        if (bullet.owner.id !== character.id) {
+                        if (!character.off && bullet.owner.id !== character.id) {
                             if (data.onNetCharacterBulletHit && data.onNetCharacterBulletHit(controller, character, bullet)) {
                                 controller.grid.unregisterDot(bullet.id);
                                 return true;

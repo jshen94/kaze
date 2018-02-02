@@ -45,7 +45,7 @@ const deleteCharacter = (character: DuelZoneCharacter): void => {
 };
 
 type OnUpdate = (diff: number, c: GameScene.Controller) => void;
-const setOnUpdate = (onUpdate: OnUpdate): void => {
+const hookOnUpdate = (onUpdate: OnUpdate): void => {
     sceneData.onUpdate = onUpdate;
 };
 
@@ -107,7 +107,7 @@ KazeServer.startServer({
     viewportHeight: Shared.ViewportHeight,
     onConnect,
     onClose,
-    setOnUpdate, 
+    hookOnUpdate, 
     addCharacter,
     deleteCharacter
 });

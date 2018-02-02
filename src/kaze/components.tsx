@@ -16,7 +16,7 @@ export const Canvas = (props: CanvasProps) => (
         transform: 'scale(1.5)',
         display: 'block',
         margin: '25px auto',
-        transformOrigin: 'top 0px'
+        transformOrigin: '50% 0%'
     }} 
     width={props.width} height={props.height} />
 );

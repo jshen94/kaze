@@ -96,6 +96,9 @@ export const connectToServer = (options: ClientOptions): void => {
 
     const addCharacter = (attributes: Shared.CharacterInit): NetworkedCharacter => {
         const character = options.addCharacter(attributes);
+        // Do not interact with physics on init
+        // Wait for sync char call since may init off screen
+        character.off = true;
         characterMap.set(attributes.id, character);
         return character;
     };
@@ -192,16 +195,26 @@ export const connectToServer = (options: ClientOptions): void => {
 
     // Sync snapshot of network character
     messageHandler.on({id: GsNetwork.CallType.SyncChar, func: (view: DataView) => {
-        if (player === undefined) {
-            console.assert(false, 'server tried to sync before player setup');
-            return;
-        }
+        if (player === undefined)
+            throw 'server tried to sync before player setup';
 
         const id = GsNetwork.quickGetCharacterId(view);
         if (characterMap.has(id)) {
             const character = characterMap.get(id) as NetworkedCharacter;
             GsNetwork.deserialize[GsNetwork.CallType.SyncChar](character.interpolator, view);
             character.off = false;
+        }
+    }});
+
+    // TODO - Next ack response if ever switching to UDP
+    messageHandler.on({id: GsNetwork.CallType.UnsyncChar, func: (view: DataView) => {
+        if (player === undefined)
+            throw 'server tried to unsync before player setup';
+
+        const id = GsNetwork.quickGetCharacterId(view);
+        if (characterMap.has(id)) {
+            const character = characterMap.get(id) as NetworkedCharacter;
+            character.off = true;
         }
     }});
 

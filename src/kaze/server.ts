@@ -27,7 +27,7 @@ export type ServerOptions = {
     viewportHeight: number;
     onConnect: (result: OnConnectResult) => void;
     onClose: (result: OnCloseResult) => void;
-    setOnUpdate: (onUpdate: (diff: number, c: GameScene.Controller) => void) => void;
+    hookOnUpdate: (onUpdate: (diff: number, c: GameScene.Controller) => void) => void;
     addCharacter: (name: string) => Character;
     deleteCharacter: (character: Character) => void;
 }
@@ -50,15 +50,20 @@ class Client {
     constructor(public ip: string | undefined) {}
 }
 
-const MAX_NAME_LENGTH = 20;
+type DoubleCharacterSet = {
+    lastVisible: Set<GameScene.Character>;
+    currentVisible: Set<GameScene.Character>;
+}
+
 export const startServer = (options: ServerOptions): void => {
 
     const clientMap = new Map<WebSocket, Client>();
-    // Messages are either a string which implies JSON with at least a "type" field
-    // or a byte array with the first byte being an ID from GsNetwork.CallType.
+    const visibilityTracker = new Map<Client, DoubleCharacterSet>();
+
     const messageHandler = new MessageHandler<MessageSource>();
     const wss = new WebSocket.Server({port: options.port});
 
+    // *isInitOnly* - Only broadcast if the client is completely setup
     const broadcast = (data: any, isInitOnly = true): void => {
         for (const [ws, client] of clientMap.entries()) {
             try {
@@ -77,6 +82,9 @@ export const startServer = (options: ServerOptions): void => {
         clientMap.set(ws, new Client(req.connection.remoteAddress));
         console.log('connection ' + req.connection.remoteAddress || '<NO IP?>');
 
+        // Messages are either a string which implies JSON with at least a "type" field
+        // or a byte array with the first byte being an ID from GsNetwork.CallType.
+        // Route to message handler
         ws.on('message', (message) => {
             if (typeof message === 'string') {
                 try {
@@ -121,23 +129,21 @@ export const startServer = (options: ServerOptions): void => {
         });
     });
 
-    const visibleRects = new Set<SpatialHash.Rect>();
-
-    options.setOnUpdate((diff: number, controller: GameScene.Controller) => {
+    options.hookOnUpdate((diff: number, controller: GameScene.Controller) => {
         clientMap.forEach((client: Client, clientWs: WebSocket) => {
             if (clientWs.readyState !== WebSocket.OPEN) return;
             if (!client.isInit || !client.character) return;
+            if (!visibilityTracker.has(client)) throw 'visibility tracker does not have client?';
 
+            const tracker = visibilityTracker.get(client) as DoubleCharacterSet;
             const centerX = client.character.position.x + client.character.size.x;
             const centerY = client.character.position.y + client.character.size.y;
-
             const x1 = centerX - options.viewportWidth / 2;
             const y1 = centerY - options.viewportHeight / 2;
             const x2 = x1 + options.viewportWidth;
             const y2 = y1 + options.viewportHeight;
 
-            visibleRects.clear();
-
+            tracker.currentVisible.clear();
             controller.grid.loopPixels(x1, y1, x2, y2, true, (b: SpatialHash.Block, bx, by) => {
                 // TODO Exception while looping
 
@@ -153,20 +159,36 @@ export const startServer = (options: ServerOptions): void => {
                     }
                 });
 
+                // What's left of *lastVisible* after looping through all blocks
+                // should be characters visible in last frame but not seen in this frame
+                // *currentVisible* should contain visible characters this frame
                 b.rects.forEach((rect: SpatialHash.Rect) => {
-                    visibleRects.add(rect);
+                    if (rect instanceof GameScene.Character)  {
+                        const character = rect as Character;
+                        tracker.lastVisible.delete(character);
+                        tracker.currentVisible.add(character);
+                    }
                 });
 
                 return false;
             });
 
-            visibleRects.forEach((rect: SpatialHash.Rect) => {
-                if (rect instanceof GameScene.Character) {
-                    const character = rect as Character;
-                    const snapshot = GsNetwork.serialize[GsNetwork.CallType.SyncChar](character, diff);
-                    clientWs.send(snapshot);
-                }
+            // Signal removal of invisible
+            tracker.lastVisible.forEach((character: GameScene.Character) => {
+                const snapshot = GsNetwork.serialize[GsNetwork.CallType.UnsyncChar](character);
+                clientWs.send(snapshot);
             });
+
+            // Update visible
+            tracker.currentVisible.forEach((character: GameScene.Character) => {
+                const snapshot = GsNetwork.serialize[GsNetwork.CallType.SyncChar](character, diff);
+                clientWs.send(snapshot);
+            });
+
+            // Current visible moves to last visible
+            const temp = tracker.lastVisible;
+            tracker.lastVisible = tracker.currentVisible;
+            tracker.currentVisible = temp;
         });
     });
 
@@ -178,21 +200,23 @@ export const startServer = (options: ServerOptions): void => {
         }
     }});
 
+    const MAX_NAME_LENGTH = 20;
+    const fixName = (candidateName: string): string => {
+        const postStringCheck = typeof candidateName === 'string' && candidateName.trim() !== '' ? candidateName : 'Anonymous';
+        return postStringCheck.substring(0, MAX_NAME_LENGTH);
+    };
+
     messageHandler.on({id: 'joinGame', func: ({ws, msg}) => {
         if (!clientMap.has(ws)) throw 'joinGame without connection?';
 
-        const name_ = typeof msg.name === 'string' && msg.name.trim() !== '' ? msg.name : 'Anonymous';
-        const name = name_.substring(0, MAX_NAME_LENGTH);
-
-        const character = options.addCharacter(name); // Reserve new ID
-        character.off = true; // Disable all interaction before fully setup
-
+        const character = options.addCharacter(fixName(msg.name)); // Reserve new ID
+        character.off = true; // But disable all interaction before fully setup
         const client: Client = clientMap.get(ws) as Client;
         client.character = character;
 
         console.log(`${client.ip} joined game as ${character.name} with id ${character.id}`);
 
-        // Send init version of game state
+        // Prepare a list of other characters in the game
         const otherCharacters: Shared.CharacterInit[] = [];
         for (const otherClient of clientMap.values()) {
             if (otherClient === client) continue;
@@ -205,19 +229,29 @@ export const startServer = (options: ServerOptions): void => {
 
         // Response pattern. Send data, expect a response by setting a one time
         // receiver that only listens for this specific ws.
+        // ---
+        // Waits for ack from client that it is capable of receiving positions 
+        // because it has setup itself using the initial game state dump
         messageHandler.on({id: 'gameStateDone', isOnce: true, receiver: ws, func: ({ws: WebSocket, msg: any}) => {
             if (!clientMap.has(ws)) throw 'gameStateDone without connection?';
             const client = clientMap.get(ws) as Client;
-            if (!client.character) throw 'could not find newly added character';
+            if (!client.character) throw 'could not find newly added character?';
+
+            // ** End of character setup **
 
             const character = client.character;
+            // Signal to all presence of this client
             broadcast(JSON.stringify({
                 type: 'addChar',
                 character: _.pick(character, ['id', 'type', 'name'])
             }));
-            character.off = false;
-
-            client.isInit = true;
+            character.off = false; // Now part of physics
+            client.isInit = true; // Completely finished init
+            visibilityTracker.set(client, {
+                currentVisible: new Set<GameScene.Character>(),
+                lastVisible: new Set<GameScene.Character>()
+            });
+            // Hooks
             options.onConnect({ws, messageHandler, ip: client.ip, broadcast});
         }});
 

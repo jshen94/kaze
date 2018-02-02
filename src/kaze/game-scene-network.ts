@@ -19,7 +19,8 @@ import ByteArrayReader = NetHelpers.ByteArrayReader;
 export enum CallType {
     SyncChar = 0,
     SyncControls,
-    BulletSpawn
+    BulletSpawn,
+    UnsyncChar
 } 
 
 // Additional networked information which is not interpolated
@@ -115,6 +116,13 @@ export const deserialize: {[i: number]: any} = {};
 export const quickGetCharacterId = (view: DataView): number => {
     return view.getUint32(1); // Must match SyncChar calls below
 }
+
+serialize[CallType.UnsyncChar] = (character: GameScene.Character): ArrayBuffer => {
+    const maker = new ByteArrayMaker(5);
+    maker.addUint8(CallType.UnsyncChar);
+    maker.addUint32(character.id);
+    return maker.make();
+};
 
 serialize[CallType.SyncChar] = (character: GameScene.Character, diff: number): ArrayBuffer => {
     const maker = new ByteArrayMaker(26);
