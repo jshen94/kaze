@@ -1,7 +1,8 @@
-
 //////////////////////////////////////////////////
 // Network layer for client
 //////////////////////////////////////////////////
+
+// TODO - Refactor into class
 
 import _ = require('lodash');
 
@@ -15,18 +16,18 @@ import MessageHandler = MsgHandler.MessageHandler;
 
 import NetworkedCharacter = GameScene.NetworkedCharacter;
 
-const CONTROL_UPLOAD_MS = 1000 / 30;
-const SERVER_FPS = 60;
-const FAKE_LAG_UPLOAD_MS = 0;
-const FAKE_LAG_DOWNLOAD_MS = 0;
+const ControlUploadMs = 1000 / 30;
+const ServerFps = 60;
+const FakeLagUploadMs = 0;
+const FakeLagDownloadMs = 0;
 
-export type Message = DataView | any;
+export type Message = DataView | any; // any = JSON
 
-export type ClientOptions = {
+export interface IClientOptions {
     url: string;
     name: string;
 
-    onConnect: (r: OnConnectResult) => void;
+    onConnect: (r: IOnConnectResult) => void;
     onError: (e: Event) => void;
     onClose:  () => void;
 
@@ -39,10 +40,16 @@ export type ClientOptions = {
         x: number, y: number, vx: number, vy: number
     ) => void;
 
+    spawnExplosion: (
+        owner: NetworkedCharacter, explosionType: GameScene.ExplosionType,
+        x: number, y: number
+    ) => void;
+
     getWeapon: (id: number) => GameScene.Weapon;
+    getExplosionType: (id: number) => GameScene.ExplosionType;
 }
 
-export type OnConnectResult = {
+export interface IOnConnectResult {
     ws: WebSocket;
     messageHandler: MessageHandler<Message>;
     characterMap: Map<number, NetworkedCharacter>;
@@ -59,7 +66,7 @@ const addMessageCallback = (
         console.log(`using fake download lag ms of ${lagDownload}`);
         const downLagMaker = new LagMaker.LagMaker({
             send: onWsMessage, 
-            averageFps: SERVER_FPS,
+            averageFps: ServerFps,
             fixedDelay: lagDownload
         });
         connection.onmessage = downLagMaker.send;
@@ -69,13 +76,12 @@ const addMessageCallback = (
     }
 };
 
-const getSend = (connection: WebSocket, lagUpload: number)
-    : ((msg: any) => void) => {
+const getSend = (connection: WebSocket, lagUpload: number) : ((msg: any) => void) => {
     if (lagUpload) {
         console.log(`using fake upload lag ms of ${lagUpload}`);
         const upLagMaker = new LagMaker.LagMaker({
             send: connection.send.bind(connection), 
-            averageFps: SERVER_FPS,
+            averageFps: ServerFps,
             fixedDelay: lagUpload
         });
         upLagMaker.start();
@@ -85,7 +91,7 @@ const getSend = (connection: WebSocket, lagUpload: number)
     }
 };
 
-export const connectToServer = (options: ClientOptions): void => {
+export const connectToServer = (options: IClientOptions): void => {
     const connection = new WebSocket(options.url);
     connection.binaryType = 'arraybuffer'; // Still can send strings
     connection.onerror = options.onError;
@@ -115,9 +121,19 @@ export const connectToServer = (options: ClientOptions): void => {
         // Is still found if owner is outside visibility, position of owner is just wrong
         // Sanity check - ownerId is not the local spatial hash ID
         const owner = characterMap.get(ownerId);
-        if (owner === undefined) throw 'invalid networked bullet owner';
+        if (owner === undefined) throw new Error('invalid networked bullet owner');
         const weapon = options.getWeapon(weaponId);
         options.spawnBullet(owner, weapon, x, y, vx, vy);
+    };
+
+    const resolveSpawnExplosion = (
+        ownerId: number, explosionTypeId: number, x: number, y: number): void => {
+        // Is still found if owner is outside visibility, position of owner is just wrong
+        // Sanity check - ownerId is not the local spatial hash ID
+        const owner = characterMap.get(ownerId);
+        if (owner === undefined) throw new Error('invalid networked bullet owner');
+        const explosionType = options.getExplosionType(explosionTypeId);
+        options.spawnExplosion(owner, explosionType, x, y);
     };
 
     // Redirect messages through handler
@@ -140,8 +156,8 @@ export const connectToServer = (options: ClientOptions): void => {
         }
     };
 
-    addMessageCallback(connection, onWsMessage, FAKE_LAG_DOWNLOAD_MS);
-    const send = getSend(connection, FAKE_LAG_UPLOAD_MS);
+    addMessageCallback(connection, onWsMessage, FakeLagDownloadMs);
+    const send = getSend(connection, FakeLagUploadMs);
 
     //////////////////////////////////////////////////
 
@@ -161,7 +177,7 @@ export const connectToServer = (options: ClientOptions): void => {
         player = characterMap.get(json.playerId);
         if (player === undefined) throw 'could not find player';
         send(JSON.stringify({type: 'gameStateDone'}));
-        setInterval(syncPlayer, CONTROL_UPLOAD_MS);
+        setInterval(syncPlayer, ControlUploadMs);
         options.onConnect({ws: connection, messageHandler, characterMap, playerId: json.playerId});
     }});
 
@@ -214,11 +230,16 @@ export const connectToServer = (options: ClientOptions): void => {
         const id = GsNetwork.quickGetCharacterId(view);
         if (characterMap.has(id)) {
             const character = characterMap.get(id) as NetworkedCharacter;
+            character.interpolator.clear();
             character.off = true;
         }
     }});
 
     messageHandler.on({id: GsNetwork.CallType.BulletSpawn, func: (view: DataView) => {
         GsNetwork.deserialize[GsNetwork.CallType.BulletSpawn](resolveSpawnBullet, view);
+    }});
+
+    messageHandler.on({id: GsNetwork.CallType.ExplosionSpawn, func: (view: DataView) => {
+        GsNetwork.deserialize[GsNetwork.CallType.ExplosionSpawn](resolveSpawnExplosion, view);
     }});
 };

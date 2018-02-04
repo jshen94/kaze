@@ -37,7 +37,7 @@ export class Block {
     forEachRectCollideWithRect (rect: Rect, isFinished: (rect: Rect) => boolean) {
         for (let otherRect of this.rects.values()) {
             if (rect.collidesWith(otherRect)) {
-                if (isFinished(rect)) return true;
+                if (isFinished(otherRect)) return true;
             }
         };
         return false;

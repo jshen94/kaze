@@ -19,13 +19,14 @@ import Interpolator = Interpolator_.Interpolator;
 // Pass to createGameScene to create update loop
 export class GameSceneData {
     private readonly zeroVector: Vec2d = new Vec2d(0, 0);
-    camera: () => Vec2d = () => this.zeroVector;
     cameraOffset: Vec2d = new Vec2d(0, 0);
 
     floorColor: string = '#223322';
     outOfMapColor: string = 'black';
     bounceMultiplier: number = 0.8;
     frictionAccelMag: number = 0.0002;
+
+    camera: () => Vec2d = () => this.zeroVector;
 
     // Tiles
     blockWidth: number | null = 10; // null = Infinite
@@ -37,8 +38,10 @@ export class GameSceneData {
     // Events
     onCharacterBulletHit?: (c: Controller, ch: Character, b: Bullet) => boolean;
     onNetCharacterBulletHit?: (c: Controller, ch: NetworkedCharacter, b: Bullet) => boolean;
-    onCharacterThingCollision?: (c: Controller, ch: Character, t: Thing) => boolean;
-    onNetCharacterThingCollision?: (c: Controller, ch: NetworkedCharacter, t: Thing) => boolean;
+    onCharacterThingCollision?: (c: Controller, ch: Character, t: Thing) => void;
+    onNetCharacterThingCollision?: (c: Controller, ch: NetworkedCharacter, t: Thing) => void;
+    onCharacterExplosionHit?: (c: Controller, ch: Character, e: Explosion) => void;
+    onNetCharacterExplosionHit?: (c: Controller, ch: NetworkedCharacter, e: Explosion) => void;
 
     // Hooks
     onUpdate?: (diff: number, c: Controller) => void;
@@ -48,12 +51,12 @@ export class GameSceneData {
 
 export enum SolidType {NotSolid, BlockAll, BlockCharacter}
 
-export interface HasSpriteSheet {
+export interface IHasSpriteSheet {
     spriteSheetIndex: number;
     spriteSheets: Draw.AnimatedSpriteSheet[];
 }
 
-export interface DrawableCharacter extends HasSpriteSheet, SpatialHash.Rect {
+export interface IDrawableCharacter extends IHasSpriteSheet, SpatialHash.Rect {
     id: number;
     size: Vec2d;
     position: Vec2d;
@@ -65,20 +68,59 @@ export interface DrawableCharacter extends HasSpriteSheet, SpatialHash.Rect {
     off: boolean;
 }
 
-export class Thing extends SpatialHash.Rect implements HasSpriteSheet {
-    spriteSheetIndex: number;
-    spriteSheets: Draw.AnimatedSpriteSheet[];
-
-    constructor(public solidType: SolidType) {
-        super(new Vec2d(50, 50), new Vec2d(0, 0));
+export class Thing extends SpatialHash.Rect implements IHasSpriteSheet {
+    constructor(
+        public solidType: SolidType,
+        public spriteSheetIndex: number,
+        public spriteSheets: Draw.AnimatedSpriteSheet[],
+        size: Vec2d,
+        position: Vec2d
+    ) {
+        super(size, position);
     }
+}
+
+// Fires *weapon* in all directions with *fragmentCount* number of directions
+export interface IExplosionFragment {
+    weapon: Weapon;
+    fragmentCount: number;
+}
+
+export class Explosion extends Thing {
+    areFragmentsFired: boolean = false;
+    lifetime: number;
+    constructor(public owner: IDrawableCharacter,
+                public explosionType: ExplosionType,
+                position: Vec2d) {
+        super(
+            SolidType.NotSolid,
+            0,
+            // Able to exclude a sprite sheet for server side
+            explosionType.spriteSheet ? [explosionType.spriteSheet.resetClone()] : [],
+            explosionType.size,
+            position
+        );
+        this.lifetime = explosionType.lifetime;
+    }
+}
+
+export class ExplosionType {
+    private static idCounter: number = 0;
+    readonly id: number = ExplosionType.idCounter++; //** Must be unsigned byte
+    constructor(
+        public damage: number,
+        public fragmentTypes: IExplosionFragment[],
+        public size: Vec2d,
+        readonly lifetime: number,
+        public spriteSheet?: Draw.AnimatedSpriteSheet
+    ) {}
 }
 
 export enum BulletShape {Line, Circle}
 
 export class Weapon {
     private static idCounter: number = 0;
-    readonly id: number = Weapon.idCounter++; // Must be unsigned byte
+    readonly id: number = Weapon.idCounter++; //** Must be unsigned byte
     damage: number = 200;
     lifetime: number = 2000;
     color: string = '#00ffff';
@@ -94,23 +136,23 @@ export class Bullet extends SpatialHash.Dot {
     lifetime: number;
 
     constructor(
-        public owner: DrawableCharacter,
-        public weapon: Weapon, 
+        public owner: IDrawableCharacter,
+        public weapon: Weapon,
         public velocity: Vec2d, position: Vec2d) {
         super(position);
         this.lifetime = weapon.lifetime;
     }
 
-    static shootFrom(owner: DrawableCharacter, weapon: Weapon): Bullet {
+    static shootFrom(owner: IDrawableCharacter, weapon: Weapon): Bullet {
         return new Bullet(
-            owner, weapon,
-            Vec2d.copy(owner.aim).magnitude(weapon.speed),
+            owner, weapon, Vec2d.magnitude(owner.aim, weapon.speed),
+            // TODO Bullet spawn on sprite gun
             new Vec2d(owner.position.x + owner.size.x / 2, owner.position.y + owner.size.y / 2)
         );
     }
 }
 
-export class Character extends SpatialHash.Rect implements DrawableCharacter {
+export class Character extends SpatialHash.Rect implements IDrawableCharacter {
     customBounceMultiplier: number | null = null;
     autoVBounce: boolean = false;
     autoHBounce: boolean = false;
@@ -121,7 +163,7 @@ export class Character extends SpatialHash.Rect implements DrawableCharacter {
     hp: number = this.maxHp;
     name: string = 'Character';
     type: number = 0;
-    
+
     maxSpeed: number = 87 / 1000; // Pixels / second
     movementAccelMag: number = 0.3 / 1000;
     rotateSpeed: number = 3.5 / 1000; // Radians / second
@@ -142,7 +184,7 @@ export class Character extends SpatialHash.Rect implements DrawableCharacter {
     spriteSheetIndex: number = -1;
     spriteSheets: Draw.AnimatedSpriteSheet[] = [];
 
-    controls: Controls.Controls = new Controls.Controls; 
+    controls: Controls.Controls = new Controls.Controls;
 
     constructor(width: number, height: number) {
         super(new Vec2d(width, height), new Vec2d(0, 0));
@@ -160,14 +202,17 @@ export class Character extends SpatialHash.Rect implements DrawableCharacter {
 }
 
 export const NetSnapshotMax = 32;
-export class NetworkedCharacter extends SpatialHash.Rect implements DrawableCharacter {
+// Note: Properties set both from this file as well as client.ts (network layer), unlike
+// the local Character class
+export class NetworkedCharacter extends SpatialHash.Rect implements IDrawableCharacter {
     aim: Vec2d = new Vec2d(0, -1);
 
     maxHp: number = 1000;
     hp: number = this.maxHp;
     off: boolean = false;
 
-    interpolator: Interpolator<GsNetwork.CharacterPartial> = new Interpolator<GsNetwork.CharacterPartial>(NetSnapshotMax);
+    interpolator: Interpolator<GsNetwork.CharacterPartial> =
+        new Interpolator<GsNetwork.CharacterPartial>(NetSnapshotMax);
     networkT: number = 0;
 
     type: number = 0;
@@ -176,12 +221,12 @@ export class NetworkedCharacter extends SpatialHash.Rect implements DrawableChar
     spriteSheetIndex: number;
     spriteSheets: Draw.AnimatedSpriteSheet[];
 
-    constructor(public readonly serverId: number, width: number, height: number) {
+    constructor(readonly serverId: number, width: number, height: number) {
         super(new Vec2d(width, height), new Vec2d(0, 0));
     }
 }
 
-// Passed by createGameScene to callbacks inside GameSceneData 
+// Passed by createGameScene to callbacks inside GameSceneData
 // so that the receiver can manipulate the scene while it's running
 export class Controller {
     isFinished: boolean = false;
@@ -189,7 +234,7 @@ export class Controller {
     uiBoxes: UiBox[] = [];
 
     constructor(data: GameSceneData) {
-        this.grid = new SpatialHash.SpatialHash(data.blockWidth, data.blockHeight, data.blockLength); 
+        this.grid = new SpatialHash.SpatialHash(data.blockWidth, data.blockHeight, data.blockLength);
     }
 }
 
@@ -203,12 +248,13 @@ export class UiBox {
         public width: number = 150) {} // Height proportional to lines count
 }
 
-export interface GameScene extends Scene.Scene {
+export interface IGameScene extends Scene.Scene {
     controller: Controller;
 }
 
-export const createGameScene = (data: GameSceneData): GameScene => {
+export const createGameScene = (data: GameSceneData): IGameScene => {
     const controller = new Controller(data);
+    const visibleRects = new Set<SpatialHash.Rect>();
 
     const begin = (context: CanvasRenderingContext2D | null): void => {
         if (context !== null) {
@@ -218,11 +264,10 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         if (data.onBegin) data.onBegin(controller);
     };
 
-    const visibleRects = new Set<SpatialHash.Rect>();
     const draw = (context: CanvasRenderingContext2D, width: number, height: number): void => {
         // Center of player
         const camera = data.camera();
-        const playerCenterX = camera.x + data.cameraOffset.x; 
+        const playerCenterX = camera.x + data.cameraOffset.x;
         const playerCenterY = camera.y + data.cameraOffset.y;
 
         // Position of screen corners in world space
@@ -233,7 +278,7 @@ export const createGameScene = (data: GameSceneData): GameScene => {
 
         // Position of map corners relative to top-left corner of screen, clipped
         // Handle infinite map size
-        const bgX1 = controller.grid.pixelWidth ? Math.max(0, -x1) : 0; 
+        const bgX1 = controller.grid.pixelWidth ? Math.max(0, -x1) : 0;
         const bgY1 = controller.grid.pixelHeight ? Math.max(0, -y1) : 0;
         const bgX2 = controller.grid.pixelWidth ? Math.min(width, controller.grid.pixelWidth - x1) : width;
         const bgY2 = controller.grid.pixelHeight ? Math.min(height, controller.grid.pixelHeight - y1) : height;
@@ -259,19 +304,19 @@ export const createGameScene = (data: GameSceneData): GameScene => {
                 if (dot instanceof Bullet) {
                     const bullet = dot as Bullet;
                     if (bullet.weapon.bulletShape === BulletShape.Circle) {
-                        Draw.drawCircle(context, 
+                        Draw.drawCircle(context,
                             bullet.position.x - x1, bullet.position.y - y1,
                             bullet.weapon.bulletLength / 2, bullet.weapon.color);
                     } else if (bullet.weapon.bulletShape === BulletShape.Line) {
-                        const vNorm = Calcs.Vec2d.magnitude(bullet.velocity, 1); 
+                        const vNorm = Calcs.Vec2d.magnitude(bullet.velocity, 1);
                         Draw.drawLine(
-                            context, 
+                            context,
                             bullet.position.x - vNorm.x * bullet.weapon.bulletLength - x1,
                             bullet.position.y - vNorm.y * bullet.weapon.bulletLength - y1,
                             bullet.position.x - x1,
                             bullet.position.y - y1,
                             bullet.weapon.color, 2);
-                    } 
+                    }
                 }
             });
             return false;
@@ -291,11 +336,11 @@ export const createGameScene = (data: GameSceneData): GameScene => {
             const rectY = rect.position.y - y1;
 
             if (rect instanceof Character || rect instanceof NetworkedCharacter) {
-                const character = rect as DrawableCharacter;
+                const character = rect as IDrawableCharacter;
                 if (character.off) return;
 
                 const sprite = character.spriteSheets[character.spriteSheetIndex];
-                if (!sprite) throw 'invalid sprite index for character'; 
+                if (!sprite) throw new Error('invalid sprite index for character');
 
                 const halfSizeX = character.size.x / 2;
                 const halfSizeY = character.size.y / 2;
@@ -315,9 +360,9 @@ export const createGameScene = (data: GameSceneData): GameScene => {
             } else if (rect instanceof Thing) {
                 const thing = rect as Thing;
                 const sprite = thing.spriteSheets[thing.spriteSheetIndex];
-                if (!sprite) throw 'invalid sprite index for character'; 
+                if (!sprite) throw new Error('invalid sprite index for thing');
 
-                sprite.draw(context, thing.position.x, thing.position.y, thing.size.x, thing.size.y);
+                sprite.draw(context, rectX, rectY, thing.size.x, thing.size.y);
             }
 
             return false;
@@ -325,10 +370,10 @@ export const createGameScene = (data: GameSceneData): GameScene => {
 
         const LINE_HEIGHT = 15;
         for (const uiBox of controller.uiBoxes) {
-            const height = LINE_HEIGHT * uiBox.lines.length + 10;
-            Draw.drawRect(context, uiBox.x, uiBox.y, uiBox.width, height, '#141414');
+            const boxHeight = LINE_HEIGHT * uiBox.lines.length + 10;
+            Draw.drawRect(context, uiBox.x, uiBox.y, uiBox.width, boxHeight, '#141414');
             for (let i = 0; i < uiBox.lines.length; ++i) {
-                Draw.drawText(context, uiBox.x + 5, uiBox.y + 5 + i * LINE_HEIGHT, 
+                Draw.drawText(context, uiBox.x + 5, uiBox.y + 5 + i * LINE_HEIGHT,
                     uiBox.lines[i], 'white');
             }
         }
@@ -357,7 +402,7 @@ export const createGameScene = (data: GameSceneData): GameScene => {
                 character.accel.y -= character.aim.y;
             }
         }
-        
+
         character.accel.magnitude(character.movementAccelMag);
     };
 
@@ -385,9 +430,9 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         }
 
         return false;
-    }
+    };
 
-    const testCollision = (character: Character, controller: Controller, data: GameSceneData): boolean => {
+    const testCollision = (character: Character): boolean => {
         if (controller.grid.isRectOutside(character)) return true;
         if (testBarrierCollision(character)) return true;
 
@@ -418,24 +463,6 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         character.position = interpolated.position;
         character.aim = interpolated.aim;
         character.hp = interpolated.other.hp;
-
-        // Turn characters out of screen off
-
-        // Center of player
-        const camera = data.camera();
-        const playerCenterX = camera.x + data.cameraOffset.x; 
-        const playerCenterY = camera.y + data.cameraOffset.y;
-
-        // Position of screen corners in world space
-        const x1 = playerCenterX - width / 2;
-        const y1 = playerCenterY - height / 2;
-        const x2 = x1 + width;
-        const y2 = y1 + height;
-
-        if (character.position.x + character.size.x < x1 || character.position.y + character.size.y < y1 || 
-            character.position.x > x2 || character.position.y > y2) {
-            character.off = true;
-        }
     };
 
     const updateLocalCharacter = (character: Character, diff: number): void => {
@@ -484,7 +511,8 @@ export const createGameScene = (data: GameSceneData): GameScene => {
 
         // Calc and apply new velocity
 
-        if (frictionMode && data.frictionAccelMag * diff > character.velocity.getMagnitude()) { // If will start moving backwards, then just stop
+        if (frictionMode && data.frictionAccelMag * diff > character.velocity.getMagnitude()) {
+            // If will start moving backwards, then just stop
             character.velocity.mult(0);
         } else {
             character.velocity.x += character.accel.x * diff;
@@ -538,10 +566,10 @@ export const createGameScene = (data: GameSceneData): GameScene => {
             // If collided, then need to revert position
 
             controller.grid.editRect(character, newX, oldY);
-            const collisionX = testCollision(character, controller, data);
+            const collisionX = testCollision(character);
 
             controller.grid.editRect(character, oldX, newY);
-            const collisionY = testCollision(character, controller, data);
+            const collisionY = testCollision(character);
 
             if (collisionX && collisionY) controller.grid.editRect(character, oldX, oldY);
             else if (collisionY) controller.grid.editRect(character, newX, oldY);
@@ -572,77 +600,139 @@ export const createGameScene = (data: GameSceneData): GameScene => {
         character.timeTillShot -= diff;
         if (character.timeTillShot < 0) character.timeTillShot = 0;
         if (character.firing) {
-            if (character.shotsBeforeReload >= character.getCurrentWeapon().shots) { 
+            if (character.shotsBeforeReload >= character.getCurrentWeapon().shots) {
                 character.timeTillShot = character.getCurrentWeapon().reload;
                 character.shotsBeforeReload = 0;
-            } else if (character.timeTillShot === 0) { 
+            } else if (character.timeTillShot === 0) {
                 const bullet = Bullet.shootFrom(character, character.getCurrentWeapon());
                 controller.grid.registerDot(bullet);
-                character.timeTillShot = character.getCurrentWeapon().rate; 
+                character.timeTillShot = character.getCurrentWeapon().rate;
                 character.shotsBeforeReload++;
             }
         }
     };
 
+    const updateExplosion = (explosion: Explosion, diff: number): void => {
+
+        // Move animation
+        const spriteSheet = explosion.spriteSheets[explosion.spriteSheetIndex];
+        if (spriteSheet) spriteSheet.move(diff);
+
+        // Initial explosion spawns outward bullets
+        if (!explosion.areFragmentsFired) {
+            explosion.areFragmentsFired = true; // Only fire once at start
+
+            const fragmentDirection = new Vec2d(0, -1);
+            // Might have many different types of fragments exploding out
+            for (const fragmentType of explosion.explosionType.fragmentTypes) {
+                const angleDiff = 2 * Math.PI / fragmentType.fragmentCount;
+                fragmentDirection.x = 0; // Point fragmentDirection up then rotate around
+                fragmentDirection.y = -1;
+                for (let j = 0; j < fragmentType.fragmentCount; ++j) {
+                    const position = new Vec2d(
+                        explosion.position.x + explosion.explosionType.size.x / 2,
+                        explosion.position.y + explosion.explosionType.size.y / 2
+                    );
+                    const bullet = new Bullet(
+                        explosion.owner,
+                        fragmentType.weapon,
+                        Vec2d.magnitude(fragmentDirection, fragmentType.weapon.speed),
+                        position
+                    );
+                    controller.grid.registerDot(bullet);
+                    fragmentDirection.rotate(angleDiff);
+                }
+            }
+        }
+
+        controller.grid.loopRectCollideWithRect(explosion, (collidedRect) => {
+            // Hit all characters, friendly fire
+            if (collidedRect instanceof Character) {
+                const character = collidedRect as Character;
+                if (!character.off) {
+                    if (data.onCharacterExplosionHit) data.onCharacterExplosionHit(controller, character, explosion);
+                }
+            } else if (collidedRect instanceof NetworkedCharacter) {
+                const character = collidedRect as NetworkedCharacter;
+                if (!character.off) {
+                    if (data.onNetCharacterExplosionHit) data.onNetCharacterExplosionHit(controller, character, explosion);
+                }
+            }
+            return false;
+        });
+
+        // Signal despawn
+        explosion.lifetime -= diff;
+        if (explosion.lifetime < 0) controller.grid.unregisterRect(explosion.id);
+    };
+
+    const updateBullet = (bullet: Bullet, diff: number): void => {
+        bullet.lifetime -= diff;
+
+        if (bullet.lifetime < 0 || controller.grid.isDotOutside(bullet)) {
+            controller.grid.unregisterDot(bullet.id);
+        } else {
+            const newX = bullet.velocity.x * diff + bullet.position.x;
+            const newY = bullet.velocity.y * diff + bullet.position.y;
+            controller.grid.editDot(bullet, newX, newY);
+            controller.grid.loopDotCollideWithRect(bullet, (rect: SpatialHash.Rect) => {
+                if (rect instanceof Character) {
+                    const character = rect as Character;
+                    if (!character.off && bullet.owner.id !== character.id) {
+                        if (data.onCharacterBulletHit && data.onCharacterBulletHit(controller, character, bullet)) {
+                            controller.grid.unregisterDot(bullet.id);
+                            return true;
+                        }
+                    }
+                } else if (rect instanceof NetworkedCharacter) {
+                    const character = rect as NetworkedCharacter;
+                    if (!character.off && bullet.owner.id !== character.id) {
+                        if (data.onNetCharacterBulletHit && data.onNetCharacterBulletHit(controller, character, bullet)) {
+                            controller.grid.unregisterDot(bullet.id);
+                            return true;
+                        }
+                    }
+                } else if (rect instanceof Thing) {
+                    const thing = rect as Thing;
+                    if (thing.solidType === SolidType.BlockAll) {
+                        controller.grid.unregisterDot(bullet.id);
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+    };
+
     // Returns true to request finish
     const update = (diff: number, width: number, height: number): boolean => {
+
         // External hook
         if (data.onUpdate) data.onUpdate(diff, controller);
 
         // Note: If A collides with B, only update one of A or B here
         controller.grid.forEachDot((dot) => {
-            if (!(dot instanceof Bullet)) return;
-
-            const bullet = dot as Bullet;
-            bullet.lifetime -= diff;
-
-            if (bullet.lifetime < 0 || controller.grid.isDotOutside(bullet)) {
-                controller.grid.unregisterDot(bullet.id);
-            } else {
-                const newX = bullet.velocity.x * diff + bullet.position.x;
-                const newY = bullet.velocity.y * diff + bullet.position.y;
-                controller.grid.editDot(bullet, newX, newY);
-                controller.grid.loopDotCollideWithRect(bullet, (rect: SpatialHash.Rect) => {
-                    if (rect instanceof Character) {
-                        const character = rect as Character;
-                        if (!character.off && bullet.owner.id !== character.id) {
-                            if (data.onCharacterBulletHit && data.onCharacterBulletHit(controller, character, bullet)) {
-                                controller.grid.unregisterDot(bullet.id);
-                                return true;
-                            } 
-                        }
-                    } else if (rect instanceof NetworkedCharacter) {
-                        const character = rect as NetworkedCharacter;
-                        if (!character.off && bullet.owner.id !== character.id) {
-                            if (data.onNetCharacterBulletHit && data.onNetCharacterBulletHit(controller, character, bullet)) {
-                                controller.grid.unregisterDot(bullet.id);
-                                return true;
-                            } 
-                        }
-                    } else if (rect instanceof Thing) {
-                        const thing = rect as Thing;
-                        if (thing.solidType === SolidType.BlockAll) {
-                            controller.grid.unregisterDot(bullet.id);
-                            return true;
-                        } 
-                    }
-                    return false;
-                });
+            if (dot instanceof Bullet) {
+                const bullet = dot as Bullet;
+                updateBullet(bullet, diff);
             }
         });
 
         controller.grid.forEachRect((rect: SpatialHash.Rect) => {
             if (rect instanceof Character || rect instanceof NetworkedCharacter) {
-                const character = rect as DrawableCharacter;
+                const character = rect as IDrawableCharacter;
 
                 const spriteSheet = character.spriteSheets[character.spriteSheetIndex];
                 if (spriteSheet) spriteSheet.move(diff);
 
                 if (character instanceof NetworkedCharacter) {
-                    updateNetworkedCharacter(character, diff, width, height);
+                    if (!character.off) updateNetworkedCharacter(character, diff, width, height);
                 } else if (character instanceof Character) {
                     if (!character.off) updateLocalCharacter(character, diff);
-                } 
+                }
+            } else if (rect instanceof Explosion) {
+                const explosion = rect as Explosion;
+                updateExplosion(explosion, diff);
             }
         });
 

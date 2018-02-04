@@ -20,6 +20,10 @@ export class AnimatedSpriteSheet {
         this.iterator = this.tickAll();
     }
 
+    resetClone() {
+        return new AnimatedSpriteSheet(this.image.src, this.animateWidth, this.animateHeight);
+    }
+
     // Moves the remaining time by *diff*, ticks if it reaches 0
     move(diff: number): void {
         this.tickRemaining -= diff; 

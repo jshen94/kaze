@@ -3,6 +3,7 @@
 //////////////////////////////////////////////////
 
 import GameScene = require('../kaze/game-scene');
+import Calcs = require('../kaze/calcs');
 import NetworkedCharacter = GameScene.NetworkedCharacter;
 import Character = GameScene.Character;
 
@@ -38,13 +39,23 @@ autoWeapon.rate = 50;
 autoWeapon.bulletShape = GameScene.BulletShape.Circle;
 autoWeapon.bulletLength = 4;
 
+export const boom = new GameScene.ExplosionType(
+    50,
+    [
+        {weapon: autoWeapon, fragmentCount: 16},
+        {weapon: burstWeapon, fragmentCount: 8}
+    ],
+    new Calcs.Vec2d(60, 60),
+    1000
+);
+
 export class DuelZoneCharacterData {
     kills: number = 0;
     deaths: number = 0;
     constructor(public baseName: string) {}
 }
 
-export interface HasDuelZoneCharacterData {
+export interface IHasDuelZoneCharacterData {
     data: DuelZoneCharacterData;
 }
 

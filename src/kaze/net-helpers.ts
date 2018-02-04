@@ -49,7 +49,7 @@ export class ByteArrayReader {
     }
 
     check(): void {
-        if (this.index !== this.size) throw 'size mismatch';
+        if (this.index !== this.size) throw new Error('size mismatch');
     }
 }
 
@@ -99,7 +99,7 @@ export class ByteArrayMaker {
     }
 
     make(): ArrayBuffer {
-        if (this.index !== this.byteSize) throw 'size mismatch';
+        if (this.index !== this.byteSize) throw new Error('size mismatch');
         return this.buffer;
     }
 }

@@ -16,14 +16,11 @@ import Controls = require('../kaze/controls');
 import Shared = require('./index-server');
 import Components = require('../kaze/components');
 
-import HasDuelZoneCharacterData = Shared.HasDuelZoneCharacterData;
+import IHasDuelZoneCharacterData = Shared.IHasDuelZoneCharacterData;
 import DuelZoneCharacterData = Shared.DuelZoneCharacterData;
 
-//////////////////////////////////////////////////
-// Specialized classes
-
-class DuelZoneNetCharacter extends GameScene.NetworkedCharacter implements HasDuelZoneCharacterData {
-    data: DuelZoneCharacterData; 
+class DuelZoneNetCharacter extends GameScene.NetworkedCharacter implements IHasDuelZoneCharacterData {
+    data: DuelZoneCharacterData;
 
     constructor(serverId: number, name: string, width: number, height: number) {
         super(serverId, width, height);
@@ -56,14 +53,14 @@ importSettings(require.context('.', false, /settings.json$/));
 
 const imageFileToUrl: {[s: string]: string} = {};
 const importAllImages = (r: __WebpackModuleApi.RequireContext) => {
-    r.keys().forEach(key => imageFileToUrl[key] = r(key));
+    r.keys().forEach((key) => imageFileToUrl[key] = r(key));
 };
 importAllImages(require.context('../../assets/images', false, /.*.(jpeg|jpg|png)/));
 
 const imageFileToSpriteSheet = new Map<string, Draw.AnimatedSpriteSheet>();
-for (const key in imageFileToUrl) {
+_.forOwn(imageFileToUrl, (value, key) => {
     imageFileToSpriteSheet.set(key, new Draw.AnimatedSpriteSheet(imageFileToUrl[key], 1, 1));
-}
+});
 
 // Map
 
@@ -74,13 +71,13 @@ const parsedMapJson: object = require('../../assets/maps/hank.json'); // Webpack
 
 const $root = $('<div />');
 $root.attr('id', 'root');
-$(document.body).append($root); 
+$(document.body).append($root);
 ReactDOM.render(
-    <Components.Canvas 
-        id='my-canvas' 
+    <Components.Canvas
+        id='my-canvas'
         width={Shared.ViewportWidth + 'px'}
         height={Shared.ViewportHeight + 'px'}
-        isVisible={true} 
+        isVisible={true}
     />, $root[0]
 );
 
@@ -90,13 +87,16 @@ const name = prompt('Enter name:', 'Henry') || 'Faker';
 const url = DuelZoneSettings === null ? 'ws://127.0.0.1:1337' : DuelZoneSettings.defaultGameUrl;
 
 const canvas = document.getElementById('my-canvas');
-if (canvas === null) throw 'canvas not found';
+if (canvas === null) throw new Error('canvas not found');
 const detachedControls = new Controls.Controls();
 detachedControls.register(canvas);
 
 const sceneData = Shared.makeSceneData();
 const playerT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./black.png'], 1, 1); // Webpack prefixes with ./
 const floorTileGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson as MapFile.MapFile, imageFileToSpriteSheet, 'floor.png');
+const explosionT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./explosion.png'], 1, 1);
+// Since client side, add the sprite in
+Shared.boom.spriteSheet = explosionT;
 sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(floorTileGrid, 0, 0);
 sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
 sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
@@ -113,22 +113,8 @@ sceneData.onBegin = (controller: GameScene.Controller): void => {
         ticker++;
         timeBox.lines[0] = ticker.toString();
     }, 1000);
-
-    // Pop up test
-
-    detachedControls.onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'e' && controller.uiBoxes.length === 1) {
-            controller.uiBoxes.push(new GameScene.UiBox([
-                '[Test] Accept duel?', '1) Yes', '2) No'
-            ], Math.random() * 50, Math.random() * 50, 250));
-        }
-    };
-    detachedControls.onKeyUp = (e: KeyboardEvent) => {
-        if (e.key === 'e' && controller.uiBoxes.length === 2) {
-            controller.uiBoxes.splice(1, 1);
-        }
-    };
 };
+
 const scene = GameScene.createGameScene(sceneData);
 
 const addCharacter = (attributes: KazeShared.CharacterInit): DuelZoneNetCharacter => {
@@ -150,18 +136,28 @@ const spawnBullet = (
     owner: GameScene.NetworkedCharacter, weapon: GameScene.Weapon,
     x: number, y: number, vx: number, vy: number
 ): void => {
-    const bullet = new GameScene.Bullet(
-        owner as GameScene.DrawableCharacter, weapon, 
-        new Calcs.Vec2d(vx, vy), new Calcs.Vec2d(x, y)
-    );
+    const bullet = new GameScene.Bullet(owner, weapon, new Calcs.Vec2d(vx, vy), new Calcs.Vec2d(x, y));
     scene.controller.grid.registerDot(bullet);
 };
+
+const spawnExplosion = (
+    owner: GameScene.NetworkedCharacter, explosionType: GameScene.ExplosionType,
+    x: number, y: number
+): void => {
+    const explosion = new GameScene.Explosion(owner, explosionType, new Calcs.Vec2d(x, y));
+    scene.controller.grid.registerRect(explosion);
+}
 
 const getWeapon = (id: number): GameScene.Weapon => {
     // TODO
     if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
     else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
-    else throw 'weapon not supported';
+    else throw new Error('weapon not supported');
+};
+
+const getExplosionType = (id: number): GameScene.ExplosionType => {
+    if (id === Shared.boom.id) return Shared.boom;
+    else throw new Error('explosion type not supported');
 };
 
 const onError = (e: Event): void => {
@@ -173,16 +169,26 @@ const onClose = (): void => {
     alert('DISCONNECTED');
 };
 
-const onConnect = (result: KazeClient.OnConnectResult): void => {
+const onConnect = (result: KazeClient.IOnConnectResult): void => {
     const player = result.characterMap.get(result.playerId);
-    if (player === undefined) throw 'player not found in character map';
+    if (player === undefined) throw new Error('player not found in character map');
+
     sceneData.camera = () => player.position;
     sceneData.cameraOffset = Calcs.Vec2d.mult(player.size, 0.5);
 
-    result.messageHandler.on({id: '@updateKd', func: (json) => {
-        if (!_.isNumber(json.id)) throw 'invalid kd target';
-        if (!_.isNumber(json.kills)) throw 'invalid kd kills';
-        if (!_.isNumber(json.deaths)) throw 'invalid kd deaths';
+    result.messageHandler.on({id: '@kdInit', func: (json: any) => {
+        json.entries.forEach(([id, kills, deaths]: [number, number, number]) => {
+            const character = result.characterMap.get(id) as DuelZoneNetCharacter;
+            character.data.kills = kills;
+            character.data.deaths = deaths;
+            character.refreshName();
+        });
+    }});
+
+    result.messageHandler.on({id: '@updateKd', func: (json: any) => {
+        if (!_.isNumber(json.id)) throw new Error('invalid kd target');
+        if (!_.isNumber(json.kills)) throw new Error('invalid kd kills');
+        if (!_.isNumber(json.deaths)) throw new Error('invalid kd deaths');
 
         const character = result.characterMap.get(json.id) as DuelZoneNetCharacter;
         character.data.kills = json.kills;
@@ -192,10 +198,26 @@ const onConnect = (result: KazeClient.OnConnectResult): void => {
 
     const canvasCasted = canvas as HTMLCanvasElement;
     Scene.playScene({fps: 60, canvas: canvasCasted, scene});
+
+    detachedControls.onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'e' && scene.controller.uiBoxes.length === 1) {
+            scene.controller.uiBoxes.push(new GameScene.UiBox([
+                '[Test] Accept duel?', '1) Yes', '2) No'
+            ], Math.random() * 50, Math.random() * 50, 250));
+        }
+    };
+    detachedControls.onKeyUp = (e: KeyboardEvent) => {
+        if (e.key === 'e' && scene.controller.uiBoxes.length === 2) {
+            scene.controller.uiBoxes.splice(1, 1);
+            result.ws.send(JSON.stringify({
+                type: '@spawnExplosion'
+            }));
+        }
+    };
 };
 
 KazeClient.connectToServer({
-    url, 
+    url,
     name,
     onConnect,
     onError,
@@ -204,5 +226,7 @@ KazeClient.connectToServer({
     addCharacter,
     deleteCharacter,
     spawnBullet,
-    getWeapon
+    spawnExplosion,
+    getWeapon,
+    getExplosionType
 });

@@ -15,13 +15,14 @@ import Direction = Controls.Direction;
 import ByteArrayMaker = NetHelpers.ByteArrayMaker;
 import ByteArrayReader = NetHelpers.ByteArrayReader;
 
-// Must be unsigned byte
+//** Must be unsigned byte
 export enum CallType {
     SyncChar = 0,
     SyncControls,
     BulletSpawn,
+    ExplosionSpawn,
     UnsyncChar
-} 
+}
 
 // Additional networked information which is not interpolated
 export class CharacterPartial {
@@ -40,7 +41,7 @@ const aimToNumber = (aim: Vec2d): number => {
 };
 
 const numberToAim = (n: number): Vec2d => {
-    const v = new Vec2d(1, 0); 
+    const v = new Vec2d(1, 0);
     v.rotate(n * AIM_SLICE - Math.PI);
     return v;
 };
@@ -73,7 +74,7 @@ const unpackControls = (packed: number, character: GameScene.Character): void =>
     const controls = character.controls;
     // 2 bytes
     character.setWeaponIndex(packed & 7);
-    packed >>>= 3; 
+    packed >>>= 3;
     controls.aim = numberToAim(packed & 127);
     packed >>>= 7;
     controls.mouse = (packed & 1) > 0;
@@ -81,9 +82,9 @@ const unpackControls = (packed: number, character: GameScene.Character): void =>
     controls.horizontal = ((packed & 3) - 1) as Direction;
     packed >>>= 2;
     controls.vertical = ((packed & 3) - 1) as Direction;
-}
+};
 
-/* 
+/*
 // TODO Testing framework, new API
 const testPackUnpackControls = (): void => {
     for (let i = 0; i < 5; ++i) {
@@ -115,7 +116,7 @@ export const deserialize: {[i: number]: any} = {};
 
 export const quickGetCharacterId = (view: DataView): number => {
     return view.getUint32(1); // Must match SyncChar calls below
-}
+};
 
 serialize[CallType.UnsyncChar] = (character: GameScene.Character): ArrayBuffer => {
     const maker = new ByteArrayMaker(5);
@@ -162,7 +163,7 @@ deserialize[CallType.SyncChar] = (interpolator: Interpolator.Interpolator<Charac
     const aim = numberToAim(reader.getUint8());
 
     // 2 bytes
-    const hp = reader.getUint16(); 
+    const hp = reader.getUint16();
 
     reader.check();
 
@@ -193,7 +194,7 @@ serialize[CallType.BulletSpawn] = (bullet: GameScene.Bullet): ArrayBuffer => {
     maker.addUint8(bullet.weapon.id);
     maker.addUint32(bullet.owner.id);
     return maker.make();
-}
+};
 
 deserialize[CallType.BulletSpawn] = (
     spawnBullet: (ownerId: number, weaponId: number, x: number, y: number, vx: number, vy: number) => void,
@@ -209,4 +210,28 @@ deserialize[CallType.BulletSpawn] = (
     const ownerId = reader.getUint32();
     reader.check();
     spawnBullet(ownerId, weaponId, x, y, vx, vy);
+};
+
+serialize[CallType.ExplosionSpawn] = (explosion: GameScene.Explosion): ArrayBuffer => {
+    const maker = new ByteArrayMaker(14);
+    maker.addUint8(CallType.ExplosionSpawn);
+    maker.addFloat32(explosion.position.x);
+    maker.addFloat32(explosion.position.y);
+    maker.addUint8(explosion.explosionType.id);
+    maker.addUint32(explosion.owner.id);
+    return maker.make();
+};
+
+deserialize[CallType.ExplosionSpawn] = (
+    spawnExplosion: (ownerId: number, explosionTypeId: number, x: number, y: number) => void,
+    view: DataView
+) => {
+    const reader = new ByteArrayReader(view);
+    reader.getUint8();
+    const x = reader.getFloat32();
+    const y = reader.getFloat32();
+    const explosionTypeId = reader.getUint8();
+    const ownerId = reader.getUint32();
+    reader.check();
+    spawnExplosion(ownerId, explosionTypeId, x, y);
 }

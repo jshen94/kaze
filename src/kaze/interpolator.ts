@@ -63,6 +63,10 @@ export class Interpolator<T> {
 
     get length(): number {return this.snapshots.length;}
 
+    clear(): void {
+        this.snapshots.splice(0);
+    }
+
     // Add new snapshot
     push(x: number, y: number, vx: number, vy: number, aim: Vec2d, distToPrev: number, other: T): void {
         if (this.snapshots.length >= this.max) {
