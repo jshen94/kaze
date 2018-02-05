@@ -16,12 +16,15 @@ import Vec2d = Calcs.Vec2d;
 import IHasDuelZoneCharacterData = Shared.IHasDuelZoneCharacterData;
 import DuelZoneCharacterData = Shared.DuelZoneCharacterData;
 
+// Don't make explosions client side
+Shared.rocketWeapon.onBulletHit = Shared.boom.onBulletHit;
+
 class DuelZoneCharacter extends GameScene.Character implements IHasDuelZoneCharacterData {
     data: DuelZoneCharacterData;
     constructor(name: string, width: number, height: number) {
         super(width, height);
         this.name = name;
-        this.weapons = [Shared.burstWeapon, Shared.autoWeapon];
+        this.weapons = [Shared.burstWeapon, Shared.autoWeapon, Shared.rocketWeapon];
         this.data = new DuelZoneCharacterData(name);
     }
 }
@@ -49,17 +52,11 @@ const onConnect = (result: KazeServer.IOnConnectResult): void => {
     const characters = Array.from(server.characterMap.values());
     result.ws.send(JSON.stringify({
         type: '@kdInit',
-        entries: characters.map((uncastedCharacter) => {
-            const character = uncastedCharacter as DuelZoneCharacter;
+        entries: characters.map((_character) => {
+            const character = _character as DuelZoneCharacter;
             return [character.id, character.data.kills, character.data.deaths];
         })
     }));
-    result.messageHandler.on({id: '@spawnExplosion', func: ({ws, msg}) => {
-        const character = server.characterMap.get(ws);
-        if (!character) throw new Error('cannot find character?');
-        const explosion = new GameScene.Explosion(character, Shared.boom, Vec2d.copy(character.position));
-        scene.controller.grid.registerRect(explosion);
-    }});
 };
 const server = KazeServer.Server.getInstance({
     port: 1337,
@@ -74,18 +71,12 @@ const server = KazeServer.Server.getInstance({
 
 //////////////////////////////////////////////////
 
-const sceneData = Shared.makeSceneData();
-sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
-sceneData.onCharacterBulletHit = (
+const respawnIfDead = (
     controller: GameScene.Controller,
-    uncastedCharacter: GameScene.Character,
-    bullet: GameScene.Bullet
-) => {
-    const character = uncastedCharacter as DuelZoneCharacter;
-    character.hp -= bullet.weapon.damage;
+    character: DuelZoneCharacter,
+    owner: DuelZoneCharacter): void => {
 
     if (character.hp < 0) {
-        const owner = bullet.owner as DuelZoneCharacter;
         owner.data.kills++;
         character.data.deaths++;
 
@@ -112,7 +103,24 @@ sceneData.onCharacterBulletHit = (
             deaths: owner.data.deaths
         }));
     }
+};
 
+const sceneData = Shared.makeSceneData();
+sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
+sceneData.onCharacterBulletHit = (
+    controller: GameScene.Controller,
+    _character: GameScene.Character,
+    bullet: GameScene.Bullet
+) => {
+    const character = _character as DuelZoneCharacter;
+    character.hp -= bullet.weapon.damage;
+    respawnIfDead(controller, character, bullet.owner as DuelZoneCharacter);
+    return true;
+};
+sceneData.onCharacterExplosionHit = (controller, _character, explosion) => {
+    const character = _character as DuelZoneCharacter;
+    character.hp -= explosion.explosionType.damage;
+    respawnIfDead(controller, character, explosion.owner as DuelZoneCharacter);
     return true;
 };
 const scene = GameScene.createGameScene(sceneData);

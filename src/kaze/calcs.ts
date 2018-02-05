@@ -17,18 +17,61 @@ export class Rect {
 
     containsVec(other: Vec2d): boolean {
         return !(
-            other.x > this.x2 || other.x < this.position.x || 
+            other.x > this.x2 || other.x < this.position.x ||
             other.y > this.y2 || other.y < this.position.y
         );
     }
 }
 
+// The fact that this class is a reference type is annoying
+// Should pass Vec2d as 2 numbers while transforming class properties with these methods...
 export class Vec2d {
-    constructor(public x: number, public y: number) {}
+    static dot(a: Vec2d, b: Vec2d): number {
+        return a.x * b.x + a.y * b.y;
+    }
 
+    static angleBetween(a: Vec2d, b: Vec2d): number {
+        const am = a.getMagnitude();
+        const bm = b.getMagnitude();
+        if (am === 0 || bm === 0) return 0;
+        let inner = Vec2d.dot(a, b) / (am * bm);
+        if (inner > 1) inner = 1;
+        if (inner < -1) inner = -1;
+        return Math.acos(inner);
+    }
+
+    static add(a: Vec2d, b: Vec2d): Vec2d {
+        const result = Vec2d.copy(a);
+        result.add(b);
+        return result;
+    }
+
+    static subtract(a: Vec2d, b: Vec2d): Vec2d {
+        const result = Vec2d.copy(a);
+        result.subtract(b);
+        return result;
+    }
+
+    static mult(a: Vec2d, m: number): Vec2d {
+        const result = Vec2d.copy(a);
+        result.mult(m);
+        return result;
+    }
+
+    static magnitude(a: Vec2d, m: number): Vec2d {
+        const result = Vec2d.copy(a);
+        result.magnitude(m);
+        return result;
+    }
+
+    static normalize(a: Vec2d): Vec2d {
+        return Vec2d.magnitude(a, 1);
+    }
     static copy(other: Vec2d): Vec2d {
         return new Vec2d(other.x, other.y);
     }
+
+    constructor(public x: number, public y: number) {}
 
     swap(): Vec2d {
         const temp = this.x;
@@ -86,51 +129,9 @@ export class Vec2d {
     atan2(): number {
         return Math.atan2(this.y, this.x);
     }
+}
 
-    static dot(a: Vec2d, b: Vec2d): number {
-        return a.x * b.x + a.y * b.y;
-    }
-
-    static angleBetween(a: Vec2d, b: Vec2d): number {
-        const am = a.getMagnitude();
-        const bm = b.getMagnitude();
-        if (am === 0 || bm === 0) return 0;
-        let inner = Vec2d.dot(a, b) / (am * bm);
-        if (inner > 1) inner = 1;
-        if (inner < -1) inner = -1;
-        return Math.acos(inner);
-    }
-
-    static add(a: Vec2d, b: Vec2d): Vec2d {
-        const result = Vec2d.copy(a);
-        result.add(b);
-        return result;
-    }
-
-    static subtract(a: Vec2d, b: Vec2d): Vec2d {
-        const result = Vec2d.copy(a);
-        result.subtract(b);
-        return result;
-    }
-
-    static mult(a: Vec2d, m: number): Vec2d {
-        const result = Vec2d.copy(a);
-        result.mult(m);
-        return result;
-    }
-
-    static magnitude(a: Vec2d, m: number): Vec2d {
-        const result = Vec2d.copy(a);
-        result.magnitude(m);
-        return result;
-    }
-
-    static normalize(a: Vec2d): Vec2d {
-        return Vec2d.magnitude(a, 1);
-    }
-};
-
-export const aimbot = 
+export const aimbot =
     (source: Vec2d, target: Vec2d, sourceVelocity: Vec2d, bulletSpeed: number): Vec2d => {
     const diff = Vec2d.subtract(source, target);
     const c = Math.pow(diff.x, 2) + Math.pow(diff.y, 2);
@@ -186,7 +187,7 @@ export const timeToHitRect =
 
 export const posOnReverse = (
     a: Vec2d,
-    aVelocity: Vec2d, 
+    aVelocity: Vec2d,
     accel: number,
     maxSpeed: number,
     timeToArrive: number
@@ -194,7 +195,7 @@ export const posOnReverse = (
 
     const currentSpeed = aVelocity.getMagnitude();
     if (currentSpeed === 0) return Vec2d.copy(a);
-    const timeToZero = currentSpeed / accel; 
+    const timeToZero = currentSpeed / accel;
     const timeToMax = maxSpeed / accel;
     const nx = aVelocity.x / currentSpeed;
     const ny = aVelocity.y / currentSpeed;
@@ -222,7 +223,7 @@ export const posOnReverse = (
 
 export const lerp = (a: Vec2d, b: Vec2d, t: number): Vec2d => {
     return new Vec2d(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-}
+};
 
 // https://en.wikipedia.org/wiki/Slerp
 // TODO - Practical 180 degree case...

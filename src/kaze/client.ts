@@ -29,7 +29,7 @@ export interface IClientOptions {
 
     onConnect: (r: IOnConnectResult) => void;
     onError: (e: Event) => void;
-    onClose:  () => void;
+    onClose: () => void;
 
     detachedControls: Controls.Controls;
     addCharacter: (i: Shared.CharacterInit) => NetworkedCharacter;
@@ -56,16 +56,18 @@ export interface IOnConnectResult {
     playerId: number;
 }
 
-const addMessageCallback = (
+// Adds to *connection* a callback handler for received messages,
+// with support for a laggy handler
+const addWsCallback = (
     connection: WebSocket,
     onWsMessage: (e: Event) => void,
-    lagDownload: number
-): void => {
+    lagDownload: number): void => {
+
     if (lagDownload) {
         // Re-route through lag maker
         console.log(`using fake download lag ms of ${lagDownload}`);
         const downLagMaker = new LagMaker.LagMaker({
-            send: onWsMessage, 
+            send: onWsMessage,
             averageFps: ServerFps,
             fixedDelay: lagDownload
         });
@@ -76,11 +78,13 @@ const addMessageCallback = (
     }
 };
 
-const getSend = (connection: WebSocket, lagUpload: number) : ((msg: any) => void) => {
+// Makes a function for sending messages through *connection*,
+// with support for a laggy send
+const makeWsSendFunc = (connection: WebSocket, lagUpload: number): ((msg: any) => void) => {
     if (lagUpload) {
         console.log(`using fake upload lag ms of ${lagUpload}`);
         const upLagMaker = new LagMaker.LagMaker({
-            send: connection.send.bind(connection), 
+            send: connection.send.bind(connection),
             averageFps: ServerFps,
             fixedDelay: lagUpload
         });
@@ -98,8 +102,9 @@ export const connectToServer = (options: IClientOptions): void => {
     connection.onclose = options.onClose;
 
     const characterMap = new Map<number, NetworkedCharacter>(); // ID -> Character
-    let player: NetworkedCharacter | undefined = undefined;
+    let player: NetworkedCharacter | undefined;
 
+    // The presence of another player but may not be currently in view
     const addCharacter = (attributes: Shared.CharacterInit): NetworkedCharacter => {
         const character = options.addCharacter(attributes);
         // Do not interact with physics on init
@@ -109,27 +114,26 @@ export const connectToServer = (options: IClientOptions): void => {
         return character;
     };
 
+    // Another player no longer in the game at all
     const deleteCharacter = (id: number): void => {
         options.deleteCharacter(id);
         characterMap.delete(id);
     };
 
-    const resolveSpawnBullet = (
+    // Server creates bullets and explosions independent of character,
+    // for the case where an offscreen character fires inscreen
+
+    const spawnBullet = (
         ownerId: number, weaponId: number,
-        x: number, y: number, vx: number, vy: number
-    ): void => {
-        // Is still found if owner is outside visibility, position of owner is just wrong
-        // Sanity check - ownerId is not the local spatial hash ID
+        x: number, y: number, vx: number, vy: number): void => {
         const owner = characterMap.get(ownerId);
         if (owner === undefined) throw new Error('invalid networked bullet owner');
         const weapon = options.getWeapon(weaponId);
         options.spawnBullet(owner, weapon, x, y, vx, vy);
     };
 
-    const resolveSpawnExplosion = (
+    const spawnExplosion = (
         ownerId: number, explosionTypeId: number, x: number, y: number): void => {
-        // Is still found if owner is outside visibility, position of owner is just wrong
-        // Sanity check - ownerId is not the local spatial hash ID
         const owner = characterMap.get(ownerId);
         if (owner === undefined) throw new Error('invalid networked bullet owner');
         const explosionType = options.getExplosionType(explosionTypeId);
@@ -156,54 +160,51 @@ export const connectToServer = (options: IClientOptions): void => {
         }
     };
 
-    addMessageCallback(connection, onWsMessage, FakeLagDownloadMs);
-    const send = getSend(connection, FakeLagUploadMs);
+    addWsCallback(connection, onWsMessage, FakeLagDownloadMs);
+    const send = makeWsSendFunc(connection, FakeLagUploadMs);
 
     //////////////////////////////////////////////////
 
+    // The initial request, which starts an exchange
     connection.onopen = () => {
         send(JSON.stringify({type: 'joinGame', name: options.name}));
     };
 
+    // Upload controls
     const syncPlayer = () => {
         const data = GsNetwork.serialize[GsNetwork.CallType.SyncControls](options.detachedControls);
         send(data);
     };
 
+    // After "joinGame" should be "gameState"
     // Got list of server character IDs, types, and player ID
     messageHandler.on({id: 'gameState', func: (json: any) => {
         json.characters.forEach((ch: Shared.CharacterInit) => addCharacter(ch));
-        if (!_.isNumber(json.playerId)) throw 'invalid player id from server';
+        if (!_.isNumber(json.playerId)) throw new Error('invalid player id from server');
         player = characterMap.get(json.playerId);
-        if (player === undefined) throw 'could not find player';
-        send(JSON.stringify({type: 'gameStateDone'}));
+        if (player === undefined) throw new Error('could not find player');
+        send(JSON.stringify({type: 'gameStateDone'})); // Acknowledged finished setup
         setInterval(syncPlayer, ControlUploadMs);
         options.onConnect({ws: connection, messageHandler, characterMap, playerId: json.playerId});
     }});
 
+    // These may occur anytime when other players join or leave
+
     messageHandler.on({id: 'addChar', func: (json: any) => {
-        if (player === undefined || player === null)
-            throw 'invalid player id';
-
-        if (json === undefined || json === null ||
-            json.character === undefined || json.character === null ||
-            !_.isNumber(json.character.id))
-            throw 'invalid character id from server';
-
+        if (!player) throw new Error('invalid player id');
+        if (!json || !json.character || !_.isNumber(json.character.id)) {
+            throw new Error('invalid character id from server');
+        }
         if (json.character.id !== player.id) {
             addCharacter(json.character);
         }
     }});
 
     messageHandler.on({id: 'deleteChar', func: (json: any) => {
-        if (player === undefined || player === null)
-            throw 'invalid player id';
-
-        if (json === undefined || json === null ||
-            json.character === undefined || json.character === null ||
-            !_.isNumber(json.character.id))
-            throw 'invalid character id from server';
-
+        if (!player) throw new Error('invalid player id');
+        if (!json || !json.character || !_.isNumber(json.character.id)) {
+            throw new Error('invalid character id from server');
+        }
         if (json.character.id !== player.id) {
             deleteCharacter(json.character.id);
         }
@@ -211,21 +212,21 @@ export const connectToServer = (options: IClientOptions): void => {
 
     // Sync snapshot of network character
     messageHandler.on({id: GsNetwork.CallType.SyncChar, func: (view: DataView) => {
-        if (player === undefined)
-            throw 'server tried to sync before player setup';
+        if (!player) throw new Error('server tried to sync before player setup');
 
         const id = GsNetwork.quickGetCharacterId(view);
         if (characterMap.has(id)) {
             const character = characterMap.get(id) as NetworkedCharacter;
+            // Unlike offline character, put stream of snapshots into interpolator/buffer
             GsNetwork.deserialize[GsNetwork.CallType.SyncChar](character.interpolator, view);
             character.off = false;
         }
     }});
 
     // TODO - Next ack response if ever switching to UDP
+    // The character has gone off screen, turn off until new data comes in
     messageHandler.on({id: GsNetwork.CallType.UnsyncChar, func: (view: DataView) => {
-        if (player === undefined)
-            throw 'server tried to unsync before player setup';
+        if (!player) throw new Error('server tried to unsync before player setup');
 
         const id = GsNetwork.quickGetCharacterId(view);
         if (characterMap.has(id)) {
@@ -236,10 +237,10 @@ export const connectToServer = (options: IClientOptions): void => {
     }});
 
     messageHandler.on({id: GsNetwork.CallType.BulletSpawn, func: (view: DataView) => {
-        GsNetwork.deserialize[GsNetwork.CallType.BulletSpawn](resolveSpawnBullet, view);
+        GsNetwork.deserialize[GsNetwork.CallType.BulletSpawn](spawnBullet, view);
     }});
 
     messageHandler.on({id: GsNetwork.CallType.ExplosionSpawn, func: (view: DataView) => {
-        GsNetwork.deserialize[GsNetwork.CallType.ExplosionSpawn](resolveSpawnExplosion, view);
+        GsNetwork.deserialize[GsNetwork.CallType.ExplosionSpawn](spawnExplosion, view);
     }});
 };

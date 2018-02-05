@@ -56,17 +56,16 @@ interface IVisibleCharacters {
 }
 
 export class Server {
-
-    private static MaxNameLength = 20;
-
     static getInstance(options: IServerOptions): Server {
         if (Server.instance) throw new Error('server already setup');
         return new Server(options);
     }
+
+    private static MaxNameLength = 20;
     private static instance: Server | null = null;
 
     private static fixName(candidateName: string): string {
-        const postStringCheck = typeof candidateName === 'string' && 
+        const postStringCheck = typeof candidateName === 'string' &&
             candidateName.trim() !== '' ? candidateName : 'Anonymous';
         return postStringCheck.substring(0, Server.MaxNameLength);
     }
@@ -80,6 +79,14 @@ export class Server {
     readonly characterMap = new Map<WebSocket, Character>();
     readonly messageHandler = new MessageHandler<MessageSource>();
 
+    private clientMap = new Map<WebSocket, Client>();
+    private visibilityTracker = new Map<Client, IVisibleCharacters>();
+    private wss: WebSocket.Server;
+
+    private constructor(public options: IServerOptions) {
+        this.wss = new WebSocket.Server({port: options.port});
+    }
+
     broadcast(data: any): boolean {
         // Public interface does not expose messaging unsetup clients
         return this.broadcastP(data, true);
@@ -90,15 +97,7 @@ export class Server {
         console.log('listening');
     }
 
-    private constructor(public options: IServerOptions) {
-        this.wss = new WebSocket.Server({port: options.port});
-    }
-
     //////////////////////////////////////////////////
-
-    private clientMap = new Map<WebSocket, Client>();
-    private visibilityTracker = new Map<Client, IVisibleCharacters>();
-    private wss: WebSocket.Server; 
 
     // *isInitOnly* - Only broadcast if the client is completely setup
     private broadcastP(data: any, isInitOnly = true): boolean {
@@ -116,7 +115,7 @@ export class Server {
             }
         }
         return failed;
-    };
+    }
 
     // Messages are either a string which implies JSON with at least a "type" field
     // or a byte array with the first byte being an ID from GsNetwork.CallType.
@@ -161,6 +160,7 @@ export class Server {
                     console.log(`${ip} closed`);
 
                     this.clientMap.delete(ws);
+                    this.characterMap.delete(ws);
                 }
             } catch (e) {
                 console.error('ws close failed ' + e.message.toString());
@@ -240,7 +240,7 @@ export class Server {
                 tracker.currentVisible = temp;
             });
         } catch (e) {
-            console.error('exception in OnUpdateHook - ' + e.message.toString()); 
+            console.error('exception in OnUpdateHook - ' + e.message.toString());
         }
     }
 
@@ -275,9 +275,7 @@ export class Server {
 
         // Alert game scene layer of new fully setup connection
         this.options.onConnect({
-            ws: ws,
-            ip: client.ip,
-            messageHandler: this.messageHandler
+            ws, ip: client.ip, messageHandler: this.messageHandler
         });
     }
 
@@ -327,7 +325,7 @@ export class Server {
         ws.on('close', this.makeOnClose(ws));
         this.options.hookOnUpdate(this.onUpdateHook);
         //** Exception handlers for these exist on onMessage
-        this.messageHandler.on({id: GsNetwork.CallType.SyncControls, func: this.onSyncControls}); 
+        this.messageHandler.on({id: GsNetwork.CallType.SyncControls, func: this.onSyncControls});
         this.messageHandler.on({id: 'joinGame', func: this.onJoinGame});
     }
 }

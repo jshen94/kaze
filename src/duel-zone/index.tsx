@@ -20,6 +20,11 @@ import IHasDuelZoneCharacterData = Shared.IHasDuelZoneCharacterData;
 import DuelZoneCharacterData = Shared.DuelZoneCharacterData;
 
 class DuelZoneNetCharacter extends GameScene.NetworkedCharacter implements IHasDuelZoneCharacterData {
+
+    static getNameKdr(data: DuelZoneCharacterData): string {
+        return `${data.baseName} (${data.kills.toString()}-${data.deaths.toString()})`;
+    }
+
     data: DuelZoneCharacterData;
 
     constructor(serverId: number, name: string, width: number, height: number) {
@@ -30,10 +35,6 @@ class DuelZoneNetCharacter extends GameScene.NetworkedCharacter implements IHasD
 
     refreshName(): void {
         this.name = DuelZoneNetCharacter.getNameKdr(this.data);
-    }
-
-    static getNameKdr(data: DuelZoneCharacterData): string {
-        return `${data.baseName} (${data.kills.toString()}-${data.deaths.toString()})`;
     }
 }
 
@@ -83,29 +84,29 @@ ReactDOM.render(
 
 //////////////////////////////////////////////////
 
-const name = prompt('Enter name:', 'Henry') || 'Faker';
+const promptName = prompt('Enter name:', 'Henry') || 'Faker';
 const url = DuelZoneSettings === null ? 'ws://127.0.0.1:1337' : DuelZoneSettings.defaultGameUrl;
 
 const canvas = document.getElementById('my-canvas');
 if (canvas === null) throw new Error('canvas not found');
+
 const detachedControls = new Controls.Controls();
 detachedControls.register(canvas);
 
-const sceneData = Shared.makeSceneData();
 const playerT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./black.png'], 1, 1); // Webpack prefixes with ./
 const floorTileGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson as MapFile.MapFile, imageFileToSpriteSheet, 'floor.png');
-const explosionT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./explosion.png'], 1, 1);
-// Since client side, add the sprite in
-Shared.boom.spriteSheet = explosionT;
+const explosionT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./explosion.png'], 2, 2);
+explosionT.tickInterval = 99;
+explosionT.autoTick = true;
+Shared.boom.spriteSheet = explosionT; // Since client side, add the sprite in
+
+const sceneData = Shared.makeSceneData();
 sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(floorTileGrid, 0, 0);
 sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
 sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
     return true; // Make bullet disappear
 };
 sceneData.onBegin = (controller: GameScene.Controller): void => {
-
-    // Timer test
-
     let ticker = 0;
     const timeBox = new GameScene.UiBox(['[TimeBox]'], 5, 5, 150);
     controller.uiBoxes.push(timeBox);
@@ -144,14 +145,15 @@ const spawnExplosion = (
     owner: GameScene.NetworkedCharacter, explosionType: GameScene.ExplosionType,
     x: number, y: number
 ): void => {
-    const explosion = new GameScene.Explosion(owner, explosionType, new Calcs.Vec2d(x, y));
+    const explosion = new GameScene.Explosion(owner, explosionType, x, y);
     scene.controller.grid.registerRect(explosion);
-}
+};
 
 const getWeapon = (id: number): GameScene.Weapon => {
     // TODO
     if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
     else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
+    else if (id === Shared.rocketWeapon.id) return Shared.rocketWeapon;
     else throw new Error('weapon not supported');
 };
 
@@ -178,7 +180,13 @@ const onConnect = (result: KazeClient.IOnConnectResult): void => {
 
     result.messageHandler.on({id: '@kdInit', func: (json: any) => {
         json.entries.forEach(([id, kills, deaths]: [number, number, number]) => {
-            const character = result.characterMap.get(id) as DuelZoneNetCharacter;
+            const character_ = result.characterMap.get(id);
+            if (character_ === undefined) {
+                console.warn('server giving kds of characters not in map');
+                return;
+            }
+
+            const character = character_ as DuelZoneNetCharacter;
             character.data.kills = kills;
             character.data.deaths = deaths;
             character.refreshName();
@@ -186,9 +194,10 @@ const onConnect = (result: KazeClient.IOnConnectResult): void => {
     }});
 
     result.messageHandler.on({id: '@updateKd', func: (json: any) => {
-        if (!_.isNumber(json.id)) throw new Error('invalid kd target');
-        if (!_.isNumber(json.kills)) throw new Error('invalid kd kills');
-        if (!_.isNumber(json.deaths)) throw new Error('invalid kd deaths');
+        if (!_.isNumber(json.id) || !_.isNumber(json.kills) || !_.isNumber(json.deaths)) {
+            console.warn('kd data not numbers');
+            return;
+        }
 
         const character = result.characterMap.get(json.id) as DuelZoneNetCharacter;
         character.data.kills = json.kills;
@@ -196,29 +205,25 @@ const onConnect = (result: KazeClient.IOnConnectResult): void => {
         character.refreshName();
     }});
 
-    const canvasCasted = canvas as HTMLCanvasElement;
-    Scene.playScene({fps: 60, canvas: canvasCasted, scene});
-
     detachedControls.onKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'e' && scene.controller.uiBoxes.length === 1) {
             scene.controller.uiBoxes.push(new GameScene.UiBox([
-                '[Test] Accept duel?', '1) Yes', '2) No'
+                '[Weapon list]', '1) Sterilizer', '2) Purifier', '3) Snub Cannon'
             ], Math.random() * 50, Math.random() * 50, 250));
         }
     };
     detachedControls.onKeyUp = (e: KeyboardEvent) => {
         if (e.key === 'e' && scene.controller.uiBoxes.length === 2) {
             scene.controller.uiBoxes.splice(1, 1);
-            result.ws.send(JSON.stringify({
-                type: '@spawnExplosion'
-            }));
         }
     };
+
+    const canvasCasted = canvas as HTMLCanvasElement;
+    Scene.playScene({fps: 60, canvas: canvasCasted, scene});
 };
 
 KazeClient.connectToServer({
     url,
-    name,
     onConnect,
     onError,
     onClose,
@@ -228,5 +233,6 @@ KazeClient.connectToServer({
     spawnBullet,
     spawnExplosion,
     getWeapon,
-    getExplosionType
+    getExplosionType,
+    name: promptName
 });

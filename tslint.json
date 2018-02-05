@@ -8,17 +8,25 @@
         "quotemark": [true, "single"],
         "ordered-imports": false,
         "member-access": [true, "no-public"],
-        "member-ordering": false,
+        "member-ordering": [true, {"order": "statics-first"}],
+        "variable-name": [true,
+            "allow-leading-underscore",
+            "allow-trailing-underscore",
+            "ban-keywords",
+            "check-format",
+            "allow-pascal-case"
+        ],
+        "curly": [true, "ignore-same-line"],
         "max-classes-per-file": false,
         "new-parens": false,
         "trailing-comma": false,
-        "curly": false,
         "max-line-length": false,
         "no-var-requires": false,
         "object-literal-sort-keys": false,
         "no-console": false,
         "no-bitwise": false,
-        "no-empty": false
+        "no-empty": false,
+        "comment-format": false
     },
     "rulesDirectory": []
 }

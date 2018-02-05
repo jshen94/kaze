@@ -19,27 +19,27 @@ export class Block {
     readonly dots: Map<number, Dot> = new Map<number, Dot>();
     readonly rects: Map<number, Rect> = new Map<number, Rect>();
 
-    constructor(public readonly isFake: boolean = false) {}
+    constructor(readonly isFake: boolean = false) {}
 
     isEmpty(): boolean {
         return this.dots.entries().next().done && this.rects.entries().next().done;
     }
 
     forEachDotCollideWithRect(dot: Dot, isFinished: (rect: Rect) => boolean) {
-        for (let rect of this.rects.values()) {
+        for (const rect of this.rects.values()) {
             if (rect.containsVec(dot.position)) {
                 if (isFinished(rect)) return true;
             }
-        };
+        }
         return false;
     }
 
-    forEachRectCollideWithRect (rect: Rect, isFinished: (rect: Rect) => boolean) {
-        for (let otherRect of this.rects.values()) {
+    forEachRectCollideWithRect(rect: Rect, isFinished: (rect: Rect) => boolean) {
+        for (const otherRect of this.rects.values()) {
             if (rect.collidesWith(otherRect)) {
                 if (isFinished(otherRect)) return true;
             }
-        };
+        }
         return false;
     }
 }
@@ -49,17 +49,16 @@ export const getShKey = (bx: number, by: number): string => {
 };
 
 export class SpatialHash {
-    readonly pixelWidth: number | null; 
+    readonly pixelWidth: number | null;
     readonly pixelHeight: number | null;
     readonly all: Block = new Block;
     readonly fakeBlock: Block = new Block(true);
     readonly blocks: Map<string, Block> = new Map<string, Block>();
 
     constructor(
-        public readonly blockWidth: number | null, // Null - infinite map
-        public readonly blockHeight: number | null,
-        public readonly blockLength: number) 
-    {
+        readonly blockWidth: number | null, // Null - infinite map
+        readonly blockHeight: number | null,
+        readonly blockLength: number) {
         this.pixelWidth = blockWidth !== null ? blockWidth * blockLength : null;
         this.pixelHeight = blockHeight !== null ? blockHeight * blockLength : null;
     }
@@ -80,19 +79,19 @@ export class SpatialHash {
     }
 
     isRectOutside(rect: Rect): boolean {
-        if (this.pixelWidth !== null && (rect.position.x < 0 || rect.x2 >= this.pixelWidth)) return true; 
-        if (this.pixelHeight !== null && (rect.position.y < 0 || rect.y2 >= this.pixelHeight)) return true; 
+        if (this.pixelWidth !== null && (rect.position.x < 0 || rect.x2 >= this.pixelWidth)) return true;
+        if (this.pixelHeight !== null && (rect.position.y < 0 || rect.y2 >= this.pixelHeight)) return true;
         return false;
     }
 
     isDotOutside(dot: Dot): boolean {
-        if (this.pixelWidth && (dot.position.x < 0 || dot.position.x >= this.pixelWidth)) return true; 
+        if (this.pixelWidth && (dot.position.x < 0 || dot.position.x >= this.pixelWidth)) return true;
         if (this.pixelHeight && (dot.position.y < 0 || dot.position.y >= this.pixelHeight)) return true;
         return false;
     }
 
     isBlockOutside(v: Vec2d): boolean {
-        if (this.blockWidth && (v.x < 0 || v.x >= this.blockWidth)) return true; 
+        if (this.blockWidth && (v.x < 0 || v.x >= this.blockWidth)) return true;
         if (this.blockHeight && (v.y < 0 || v.y >= this.blockHeight)) return true;
         return false;
     }
@@ -112,9 +111,9 @@ export class SpatialHash {
     }
 
     didRectChangeBlock(rect: Rect, newX: number, newY: number): boolean {
-        return this.didBlockChange(rect.position.x, rect.position.y, newX, newY) || 
+        return this.didBlockChange(rect.position.x, rect.position.y, newX, newY) ||
             this.didBlockChange(
-                rect.discreteX2, rect.discreteY2, 
+                rect.discreteX2, rect.discreteY2,
                 Math.ceil(newX + rect.size.x) - 1, Math.ceil(newY + rect.size.y) - 1);
     }
 
@@ -144,12 +143,6 @@ export class SpatialHash {
         this.all.dots.forEach(func);
     }
 
-    private handleEmptyBlock(block: Block, bx: number, by: number): void {
-        if (block.isEmpty() && !block.isFake) {
-            this.blocks.delete(getShKey(bx, by));
-        }
-    }
-
     loopDot(dot: Dot, isReading: boolean, func: (block: Block, bx: number, by: number) => void) {
         const b = this.pixelToBlock(dot.position.x, dot.position.y);
         if (this.isBlockOutside(b)) return;
@@ -159,7 +152,7 @@ export class SpatialHash {
     }
 
     loop(bx1: number, by1: number, bx2: number, by2: number,
-        isReading: boolean, isFinished: (block: Block, bx: number, by: number) => boolean): boolean {
+         isReading: boolean, isFinished: (block: Block, bx: number, by: number) => boolean): boolean {
 
         if (this.blockWidth !== null && bx1 < 0) bx1 = 0;
         if (this.blockHeight !== null && by1 < 0) by1 = 0;
@@ -179,15 +172,16 @@ export class SpatialHash {
     }
 
     loopPixels(x1: number, y1: number, x2: number, y2: number,
-        isReading: boolean, isFinished: (block: Block, bx: number, by: number) => boolean): boolean {
+               isReading: boolean, isFinished: (block: Block, bx: number, by: number) => boolean): boolean {
         const a = this.pixelToBlock(x1, y1);
         const b = this.pixelToBlock(x2, y2);
         return this.loop(a.x, a.y, b.x, b.y, isReading, isFinished);
     }
 
-    loopRect(rect: Rect, isReading: boolean, 
-        isFinished: (block: Block, bx: number, by: number) => boolean): boolean {
-        return this.loopPixels(rect.position.x, rect.position.y, rect.discreteX2, rect.discreteY2, isReading, isFinished); 
+    loopRect(rect: Rect, isReading: boolean,
+             isFinished: (block: Block, bx: number, by: number) => boolean
+    ): boolean {
+        return this.loopPixels(rect.position.x, rect.position.y, rect.discreteX2, rect.discreteY2, isReading, isFinished);
     }
 
     loopDotCollideWithRect(dot: Dot, func: (rect: Rect) => boolean): void {
@@ -200,18 +194,18 @@ export class SpatialHash {
 
     addRect(rect: Rect): void {
         this.loopRect(rect, false, (b) => {
-            b.rects.set(rect.id, rect); 
-            return false; 
+            b.rects.set(rect.id, rect);
+            return false;
         });
     }
 
     removeRect(id: number): void {
         const rect = this.all.rects.get(id);
-        if (rect === undefined) throw 'removing invalid rect';
+        if (rect === undefined) throw new Error('removing invalid rect');
         console.assert(rect.id === id, 'rect key id is not actual id');
         this.loopRect(rect, false, (b) => {
-            b.rects.delete(rect.id); 
-            return false; 
+            b.rects.delete(rect.id);
+            return false;
         });
     }
 
@@ -233,7 +227,7 @@ export class SpatialHash {
 
     removeDot(id: number): void {
         const dot = this.all.dots.get(id);
-        if (dot === undefined) throw 'removing invalid dot';
+        if (dot === undefined) throw new Error('removing invalid dot');
         console.assert(dot.id === id, 'dot key id is not actual id');
         this.loopDot(dot, false, (b) => {
             b.dots.delete(dot.id);
@@ -249,4 +243,10 @@ export class SpatialHash {
         this.removeDot(id);
         this.all.dots.delete(id);
     }
-};
+
+    private handleEmptyBlock(block: Block, bx: number, by: number): void {
+        if (block.isEmpty() && !block.isFake) {
+            this.blocks.delete(getShKey(bx, by));
+        }
+    }
+}

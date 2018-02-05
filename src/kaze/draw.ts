@@ -10,7 +10,7 @@ export class AnimatedSpriteSheet {
     tickRemaining: number = 0;
     private iterator: Iterator<void>;
 
-    constructor(relativePath: string, public animateWidth: number, public animateHeight: number) {
+    constructor(private relativePath: string, public animateWidth: number, public animateHeight: number) {
         this.image = new Image();
         this.image.src = relativePath;
         this.image.onload = () => { // Assume equally spaced out
@@ -20,17 +20,13 @@ export class AnimatedSpriteSheet {
         this.iterator = this.tickAll();
     }
 
-    resetClone() {
-        return new AnimatedSpriteSheet(this.image.src, this.animateWidth, this.animateHeight);
-    }
-
     // Moves the remaining time by *diff*, ticks if it reaches 0
     move(diff: number): void {
-        this.tickRemaining -= diff; 
+        this.tickRemaining -= diff;
         if (this.tickRemaining < 0) {
             this.tickRemaining = this.tickInterval;
             this.iterator.next();
-        } 
+        }
     }
 
     // Loops through the animation sheet
@@ -48,14 +44,14 @@ export class AnimatedSpriteSheet {
 
     draw(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
         context.drawImage(
-            this.image, 
+            this.image,
             Math.floor(this.animateX * this.spriteWidth),
             Math.floor(this.animateY * this.spriteHeight),
             Math.floor(this.spriteWidth),
             Math.floor(this.spriteHeight),
             Math.floor(x),
             Math.floor(y),
-            Math.floor(width), 
+            Math.floor(width),
             Math.floor(height));
     }
 }
@@ -79,8 +75,8 @@ export const drawRect = (
 };
 
 export const drawLine = (
-    context: CanvasRenderingContext2D, 
-    x1: number, y1: number, x2: number, y2: number, 
+    context: CanvasRenderingContext2D,
+    x1: number, y1: number, x2: number, y2: number,
     strokeStyle: string, lineWidth: number
 ): void => {
     context.lineWidth = lineWidth;
