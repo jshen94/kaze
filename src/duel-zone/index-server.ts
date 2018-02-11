@@ -29,7 +29,7 @@ burstWeapon.bulletShape = GameScene.BulletShape.Line;
 burstWeapon.bulletLength = 10;
 
 export const autoWeapon = new GameScene.Weapon();
-autoWeapon.damage = 10;
+autoWeapon.damage = 25;
 autoWeapon.lifetime = 2000;
 autoWeapon.color = '#ffffff';
 autoWeapon.speed = 0.2;
@@ -57,8 +57,10 @@ rocketWeapon.speed = 0.4;
 rocketWeapon.shots = 1;
 rocketWeapon.reload = 1500;
 rocketWeapon.rate = 1500;
+rocketWeapon.prefire = 1000;
 rocketWeapon.bulletShape = GameScene.BulletShape.Circle;
 rocketWeapon.bulletLength = 10;
+rocketWeapon.requireStationary = true;
 
 //BEAM GRENADE
 //boom.fragmentTypes.push({weapon: rocketWeapon, fragmentCount: 8});

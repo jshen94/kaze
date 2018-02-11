@@ -21,7 +21,8 @@ export enum CallType {
     SyncControls,
     BulletSpawn,
     ExplosionSpawn,
-    UnsyncChar
+    UnsyncChar,
+    PrefireTrigger
 }
 
 // Additional networked information which is not interpolated
@@ -51,7 +52,7 @@ const numberToAim = (n: number): Vec2d => {
 const MAX_WEAPON_COUNT = 8;
 
 const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizontal: Direction, weaponIndex: number): number => {
-    // console.assert(weaponIndex < MAX_WEAPON_COUNT);
+    //** weaponIndex < MAX_WEAPON_COUNT;
 
     const positiveV = vertical + 1;
     const positiveH = horizontal + 1;
@@ -73,7 +74,7 @@ const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizonta
 const unpackControls = (packed: number, character: GameScene.Character): void => {
     const controls = character.controls;
     // 2 bytes
-    character.setWeaponIndex(packed & 7);
+    character.trySetWeaponIndex(packed & 7);
     packed >>>= 3;
     controls.aim = numberToAim(packed & 127);
     packed >>>= 7;
@@ -116,6 +117,22 @@ export const deserialize: {[i: number]: any} = {};
 
 export const quickGetCharacterId = (view: DataView): number => {
     return view.getUint32(1); // Must match SyncChar calls below
+};
+
+serialize[CallType.PrefireTrigger] = (character: GameScene.Character): ArrayBuffer => {
+    const maker = new ByteArrayMaker(6);
+    maker.addUint8(CallType.PrefireTrigger);
+    maker.addUint32(character.id);
+    maker.addUint8(character.prefiring ? 1 : 0); // TODO Compress
+    return maker.make();
+};
+
+deserialize[CallType.PrefireTrigger] = (character: GameScene.NetworkedCharacter, view: DataView): void => {
+    const reader = new ByteArrayReader(view);
+    reader.getUint8();
+    reader.getUint32();
+    character.prefiring = reader.getUint8() > 0;
+    reader.check();
 };
 
 serialize[CallType.UnsyncChar] = (character: GameScene.Character): ArrayBuffer => {
@@ -234,4 +251,4 @@ deserialize[CallType.ExplosionSpawn] = (
     const ownerId = reader.getUint32();
     reader.check();
     spawnExplosion(ownerId, explosionTypeId, x, y);
-}
+};

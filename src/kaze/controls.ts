@@ -47,7 +47,7 @@ export class Controls {
 
         const keyUp = (e: KeyboardEvent): void => {
             if (e.keyCode === 87) {
-                this.up = false; 
+                this.up = false;
                 this.vertical = this.down ? Direction.Negative : Direction.Stationary;
             } else if (e.keyCode === 83) {
                 this.down = false;

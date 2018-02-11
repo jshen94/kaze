@@ -11,7 +11,7 @@ export class DialogueSceneData {
     constructor() {}
 }
 
-export const createDialogueScene = (data: DialogueSceneData): Scene.Scene => {
+export const createDialogueScene = (data: DialogueSceneData): Scene.IScene => {
     let y = 1;
     let lifetime = data.lifetime;
 

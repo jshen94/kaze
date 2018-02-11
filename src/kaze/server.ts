@@ -232,6 +232,12 @@ export class Server {
                 tracker.currentVisible.forEach((character: Character) => {
                     const snapshot = GsNetwork.serialize[GsNetwork.CallType.SyncChar](character, diff);
                     clientWs.send(snapshot);
+
+                    // When last visible update of prefiring differs from current visible update
+                    if (character.prefiring !== character.lastPrefiring) {
+                        const prefiringUpdate = GsNetwork.serialize[GsNetwork.CallType.PrefireTrigger](character);
+                        clientWs.send(prefiringUpdate);
+                    }
                 });
 
                 // Current visible moves to last visible

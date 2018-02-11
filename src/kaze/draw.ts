@@ -66,6 +66,16 @@ export const drawCircle = (
     context.fill();
 };
 
+export const drawCircleOutline = (
+    context: CanvasRenderingContext2D, x: number, y: number,
+    radius: number, strokeStyle: string
+): void => {
+    context.strokeStyle = strokeStyle;
+    context.beginPath();
+    context.arc(Math.floor(x), Math.floor(y), Math.floor(radius), 0, Math.floor(2 * Math.PI));
+    context.stroke();
+};
+
 export const drawRect = (
     context: CanvasRenderingContext2D, x: number, y: number,
     width: number, height: number, fillStyle: string

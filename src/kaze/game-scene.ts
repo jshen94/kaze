@@ -67,6 +67,7 @@ export interface IDrawableCharacter extends IHasSpriteSheet, SpatialHash.Rect {
     type: number;
     name: string;
     off: boolean;
+    prefiring: boolean;
 }
 
 export class Thing extends SpatialHash.Rect implements IHasSpriteSheet {
@@ -131,6 +132,7 @@ export enum BulletShape {Line, Circle}
 export class Weapon {
     private static idCounter: number = 0;
     readonly id: number = Weapon.idCounter++; //** Must be unsigned byte
+    prefire: number = 0;
     damage: number = 200;
     lifetime: number = 2000;
     color: string = '#00ffff';
@@ -138,6 +140,7 @@ export class Weapon {
     shots: number = 3;
     reload: number = 1000;
     rate: number = 200;
+    requireStationary: boolean = false;
     bulletShape: BulletShape = BulletShape.Circle;
     bulletLength: number = 4;
     onBulletHit?: ((controller: Controller, bullet: Bullet) => void);
@@ -162,38 +165,51 @@ export class Bullet extends SpatialHash.Dot {
     }
 }
 
+export enum FiringStage {
+    Idle, Prefire, Firing
+}
+
+// Local character, server or client
 export class Character extends SpatialHash.Rect implements IDrawableCharacter {
-    customBounceMultiplier: number | null = null;
-    autoVBounce: boolean = false;
-    autoHBounce: boolean = false;
-    disableBackpeddle: boolean = false;
-    wrapMap: boolean = false;
+
+    // IDrawableCharacter
     off: boolean = false;
     maxHp: number = 1000;
     hp: number = this.maxHp;
     name: string = 'Character';
     type: number = 0;
+    aim: Vec2d = new Vec2d(0, -1);
+    prefiring: boolean = false;
 
+    // IDrawableCharacter.IHasSpriteSheet
+    spriteSheetIndex: number = -1;
+    spriteSheets: Draw.AnimatedSpriteSheet[] = [];
+
+    // AI support
+    autoVBounce: boolean = false;
+    autoHBounce: boolean = false;
+
+    // Server-side support
+    lastPrefiring: boolean = false;
+
+    customBounceMultiplier: number | null = null;
+    disableBackpeddle: boolean = false;
+    wrapMap: boolean = false;
     maxSpeed: number = 87 / 1000; // Pixels / second
     movementAccelMag: number = 0.3 / 1000;
     rotateSpeed: number = 3.5 / 1000; // Radians / second
     rotateDirection: Direction = Direction.Stationary;
     accel: Vec2d = new Vec2d(0, 0);
     velocity: Vec2d = new Vec2d(0, 0);
-    aim: Vec2d = new Vec2d(0, -1);
     desiredAim: Vec2d = new Vec2d(0, -1);
     horizontal: Direction = Direction.Stationary;
     vertical: Direction = Direction.Stationary;
     firing: boolean = false;
-
-    timeTillShot: number = 0;
+    firingStageRemaining: number = 0;
     shotsBeforeReload: number = 0;
     weapons: Weapon[] = [new Weapon];
-
-    spriteSheetIndex: number = -1;
-    spriteSheets: Draw.AnimatedSpriteSheet[] = [];
-
     controls: Controls.Controls = new Controls.Controls;
+    firingStage: FiringStage = FiringStage.Idle;
 
     private weaponIndex: number = 0;
 
@@ -205,33 +221,39 @@ export class Character extends SpatialHash.Rect implements IDrawableCharacter {
         return this.weapons[this.weaponIndex];
     }
 
-    setWeaponIndex = (index: number): void => {
-        if (index < this.weapons.length) {
+    trySetWeaponIndex = (index: number): boolean => {
+        // Do not allow weapon change during firing (doesn't work with reload counts)
+        if (index < this.weapons.length && !this.firing) {
             this.weaponIndex = index;
+            return true;
         }
+        return false;
     }
 }
 
 export const NetSnapshotMax = 32;
-// Note: Properties set both from this file as well as client.ts (network layer), unlike
-// the local Character class
+// Server controlled character
 export class NetworkedCharacter extends SpatialHash.Rect implements IDrawableCharacter {
-    aim: Vec2d = new Vec2d(0, -1);
 
+    // IDrawableCharacter
+    off: boolean = false; // Part of memory but invisible
+    aim: Vec2d = new Vec2d(0, -1);
     maxHp: number = 1000;
     hp: number = this.maxHp;
-    off: boolean = false;
+    prefiring: boolean = false;
+    type: number = 0;
+    name: string = 'NetCharacter';
 
+    // IDrawableCharacter.IHasSpriteSheet
+    spriteSheetIndex: number;
+    spriteSheets: Draw.AnimatedSpriteSheet[];
+
+    // Buffered snapshots from server
     interpolator: Interpolator<GsNetwork.CharacterPartial> =
         new Interpolator<GsNetwork.CharacterPartial>(NetSnapshotMax);
     networkT: number = 0;
 
-    type: number = 0;
-    name: string = 'NetCharacter';
-
-    spriteSheetIndex: number;
-    spriteSheets: Draw.AnimatedSpriteSheet[];
-
+    //** serverId != local ID
     constructor(readonly serverId: number, width: number, height: number) {
         super(new Vec2d(width, height), new Vec2d(0, 0));
     }
@@ -259,7 +281,7 @@ export class UiBox {
         public width: number = 150) {} // Height proportional to lines count
 }
 
-export interface IGameScene extends Scene.Scene {
+export interface IGameScene extends Scene.IScene {
     controller: Controller;
 }
 
@@ -277,6 +299,7 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
     };
 
     const draw = (context: CanvasRenderingContext2D, width: number, height: number): void => {
+
         // Center of player
         const camera = data.camera();
         const playerCenterX = camera.x + data.cameraOffset.x;
@@ -361,10 +384,21 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
             const halfSizeX = character.size.x / 2;
             const halfSizeY = character.size.y / 2;
 
+            const centerX = rectX + halfSizeX;
+            const centerY = rectY + halfSizeY;
+
             context.translate(rectX + halfSizeX, rectY + halfSizeY);
             context.rotate(character.aim.atan2());
             sprite.draw(context, -halfSizeX, -halfSizeY, character.size.x, character.size.y);
             context.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
+
+            if (character.prefiring) {
+                const aimPoint = Vec2d.magnitude(character.aim, 10);
+                context.translate(centerX + aimPoint.x, centerY + aimPoint.y);
+                context.rotate(Math.PI / 2);
+                Draw.drawLine(context, -aimPoint.x, -aimPoint.y, aimPoint.x, aimPoint.y, 'red', 1);
+                context.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
+            }
 
             const hpBarY = rectY - 6;
             const hpBarWidth = character.size.x + 10;
@@ -461,6 +495,64 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
             return false;
         });
     };
+
+    const updateFiringStage = (character: Character, diff: number): void => {
+        character.lastPrefiring = character.prefiring;
+
+        const currentWeapon = character.getCurrentWeapon();
+
+        // Visualize as a state graph with edges representing a mandatory delay
+        // Mandatory delay exceptions: 
+        // - Transferring into the prefire state can be preempted by
+        // character.firing = false -> Quit delay and go to idle stage immediately
+        // - Same for any state if stationary check fails
+
+        character.firingStageRemaining -= diff;
+        if (character.firingStageRemaining < 0) character.firingStageRemaining = 0;
+        
+        const stationaryCheck = !currentWeapon.requireStationary || (
+            character.vertical === Direction.Stationary && character.horizontal === Direction.Stationary);
+
+        // Special: Prefire -> Idle, Any -> Idle
+        if (!stationaryCheck || character.firingStage === FiringStage.Prefire && !character.firing) { 
+            character.firingStage = FiringStage.Idle;
+            character.prefiring = false; // Note: Not part of logic, for IDrawableCharacter
+            character.firingStageRemaining = 0;
+        }
+
+        if (stationaryCheck && character.firingStageRemaining === 0) {
+            if (character.firingStage === FiringStage.Idle) { // Idle -> Prefire, Firing
+                if (character.firing) {
+                    if (currentWeapon.prefire > 0) {
+                        character.prefiring = true;
+                        character.firingStageRemaining = currentWeapon.prefire;
+                        character.firingStage = FiringStage.Prefire;
+                    } else {
+                        character.firingStage = FiringStage.Firing;
+                    }
+                }
+            } else if (character.firingStage === FiringStage.Prefire) { // Prefire -> Firing, Idle
+                character.prefiring = false;
+                character.firingStage = character.firing ? FiringStage.Firing : FiringStage.Idle;
+            } else if (character.firingStage === FiringStage.Firing) { // Firing -> Idle
+                if (character.firing) {
+                    const bullet = Bullet.shootFrom(character, currentWeapon);
+                    controller.grid.registerDot(bullet);
+                    character.shotsBeforeReload++;
+
+                    if (character.shotsBeforeReload >= currentWeapon.shots) {
+                        character.shotsBeforeReload = 0;
+                        character.firingStageRemaining = currentWeapon.reload;
+                    } else {
+                        character.firingStageRemaining = currentWeapon.rate;
+                    }
+                }
+                character.firingStage = FiringStage.Idle;
+            } else {
+                throw new Error('invalid firingStage');
+            }
+        }
+    }
 
     const updateNetworkedCharacter = (
         character: NetworkedCharacter, diff: number, width: number, height: number
@@ -612,19 +704,7 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
 
         // Weapons
 
-        character.timeTillShot -= diff;
-        if (character.timeTillShot < 0) character.timeTillShot = 0;
-        if (character.firing) {
-            if (character.shotsBeforeReload >= character.getCurrentWeapon().shots) {
-                character.timeTillShot = character.getCurrentWeapon().reload;
-                character.shotsBeforeReload = 0;
-            } else if (character.timeTillShot === 0) {
-                const bullet = Bullet.shootFrom(character, character.getCurrentWeapon());
-                controller.grid.registerDot(bullet);
-                character.timeTillShot = character.getCurrentWeapon().rate;
-                character.shotsBeforeReload++;
-            }
-        }
+        updateFiringStage(character, diff);
     };
 
     const updateExplosion = (explosion: Explosion, diff: number): void => {

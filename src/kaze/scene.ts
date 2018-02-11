@@ -1,4 +1,4 @@
-export interface Scene {
+export interface IScene {
     begin: (context: CanvasRenderingContext2D | null) => void;
     draw: (context: CanvasRenderingContext2D, width: number, height: number) => void;
     update: (diff: number, width: number, height: number) => boolean;
@@ -10,11 +10,11 @@ export class CanvasSizeSubstitute {
 
 export type PlaySceneOptions = {
     fps: number;
-    scene: Scene;
+    scene: IScene;
     canvas: HTMLCanvasElement | CanvasSizeSubstitute;
 }
 
-export const playScene = (options: PlaySceneOptions): Scene => {
+export const playScene = (options: PlaySceneOptions): IScene => {
     const scene = options.scene;
     const canvas = options.canvas;
 

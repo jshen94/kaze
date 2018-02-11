@@ -220,6 +220,8 @@ export const connectToServer = (options: IClientOptions): void => {
             // Unlike offline character, put stream of snapshots into interpolator/buffer
             GsNetwork.deserialize[GsNetwork.CallType.SyncChar](character.interpolator, view);
             character.off = false;
+        } else {
+            console.error('server invalid SyncChar id');
         }
     }});
 
@@ -233,6 +235,18 @@ export const connectToServer = (options: IClientOptions): void => {
             const character = characterMap.get(id) as NetworkedCharacter;
             character.interpolator.clear();
             character.off = true;
+        } else {
+            console.error('server invalid UnsyncChar id');
+        }
+    }});
+
+    messageHandler.on({id: GsNetwork.CallType.PrefireTrigger, func: (view: DataView) => {
+        const id = GsNetwork.quickGetCharacterId(view);
+        if (characterMap.has(id)) {
+            const character = characterMap.get(id) as NetworkedCharacter;
+            GsNetwork.deserialize[GsNetwork.CallType.PrefireTrigger](character, view);
+        } else {
+            console.error('server invalid PrefireTrigger id');
         }
     }});
 
