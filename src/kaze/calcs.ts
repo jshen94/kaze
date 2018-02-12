@@ -67,6 +67,7 @@ export class Vec2d {
     static normalize(a: Vec2d): Vec2d {
         return Vec2d.magnitude(a, 1);
     }
+
     static copy(other: Vec2d): Vec2d {
         return new Vec2d(other.x, other.y);
     }

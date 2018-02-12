@@ -56,7 +56,7 @@ const imageFileToUrl: {[s: string]: string} = {};
 const importAllImages = (r: __WebpackModuleApi.RequireContext) => {
     r.keys().forEach((key) => imageFileToUrl[key] = r(key));
 };
-importAllImages(require.context('../../assets/images', false, /.*.(jpeg|jpg|png)/));
+importAllImages(require.context('../../assets', false, /.*.(jpeg|jpg|png)/));
 
 const imageFileToSpriteSheet = new Map<string, Draw.AnimatedSpriteSheet>();
 _.forOwn(imageFileToUrl, (value, key) => {
@@ -65,7 +65,7 @@ _.forOwn(imageFileToUrl, (value, key) => {
 
 // Map
 
-const parsedMapJson: object = require('../../assets/maps/hank.json'); // Webpack will parse
+const parsedMapJson: object = require('../../assets/hank.json'); // Webpack will parse
 
 //////////////////////////////////////////////////
 // DOM

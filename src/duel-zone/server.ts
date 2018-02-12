@@ -29,7 +29,7 @@ class DuelZoneCharacter extends GameScene.Character implements IHasDuelZoneChara
     }
 }
 
-const parsedMapJson = require('../../assets/maps/hank.json'); // Webpack will parse on compile
+const parsedMapJson = require('../../assets/hank.json'); // Webpack will parse on compile
 const floorTileGrid = FloorTileGrid.FloorTileGrid.fromMapFileBarrierOnly(parsedMapJson);
 
 //////////////////////////////////////////////////

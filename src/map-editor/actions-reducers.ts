@@ -36,7 +36,7 @@ export interface ClearSpritesAction {
     type: SpriteActionKeys.ClearSprites;
 }
 
-export type SpriteAction = 
+export type SpriteAction =
     LoadSpritesAction | PickSpriteAction | DeleteSpriteAction | ClearSpritesAction;
 
 export const loadSprites = (fileNameToUrl: Map<string, string>)
@@ -45,7 +45,7 @@ export const pickSprite = (index: number)
     : PickSpriteAction => ({type: SpriteActionKeys.PickSprite, index});
 export const deleteSprite = (fileName: string)
     : DeleteSpriteAction => ({type: SpriteActionKeys.DeleteSprite, fileName});
-export const clearSprites = () 
+export const clearSprites = ()
     : ClearSpritesAction => ({type: SpriteActionKeys.ClearSprites});
 
 export class SpriteMode {
@@ -184,7 +184,7 @@ export interface DispatchProps {
     onSpriteSelect: (index: number) => void;
     onEditMap: (f: FileList) => void;
     onNewMap: (name: string, blockWidth: number, blockHeight: number) => void;
-    onSaveMap: (mapContent: MapContent) => void; 
+    onSyncMap: (mapContent: MapContent) => void; 
 }
 
 export const mapDispatchToProps = (dispatch: Redux.Dispatch<CombinedAction>): DispatchProps => {
@@ -203,7 +203,7 @@ export const mapDispatchToProps = (dispatch: Redux.Dispatch<CombinedAction>): Di
             const result = Helpers.readMapFile(files, (error: string) => {
                 Materialize.toast(`Map load error: ${error}`, 4000);
                 console.assert(false, error);
-            }, (result: Helpers.ReadMapFile) => {
+            }, (result: Helpers.IReadMapFile) => {
                 dispatch(clearSprites());
                 dispatch(loadSprites(result.fileNameToUrl));
                 dispatch(editMap(result.mapContent));
@@ -212,7 +212,7 @@ export const mapDispatchToProps = (dispatch: Redux.Dispatch<CombinedAction>): Di
         onNewMap: (name: string, blockWidth: number, blockHeight: number): void => {
             dispatch(newMap(name, blockWidth, blockHeight));
         },
-        onSaveMap: (mapContent: MapContent): void => {
+        onSyncMap: (mapContent: MapContent): void => {
             // Sync the state from DOM
             dispatch(editMap(mapContent));
         }

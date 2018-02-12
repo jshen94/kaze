@@ -1,14 +1,18 @@
+import Calcs = require('./calcs');
 import FloorTileGrid = require('./floor-tile-grid');
 import BarrierType = FloorTileGrid.BarrierType;
 
+export type MarkerMap = {[s: string]: string;}
+
 export class MapContent {
-    // Empty map on construction
     name: string = 'New map';
     blockWidth: number = 0;
     blockHeight: number = 0;
-    rows: number[][] = [];
+    rows: number[][] = []; // Pointer to sprite sheet, -1 to use default sprite
     barrierRows: FloorTileGrid.BarrierType[][] = [];
+    markers: MarkerMap = {}; // eg. Teleporter locations, or anything
 
+    // Make empty map with dimensions
     initialize(name: string, blockWidth: number, blockHeight: number): void {
         const rows = Array(blockHeight);
         const barrierRows = Array(blockHeight);
@@ -32,6 +36,7 @@ export class MapContent {
     }
 }
 
+// `spriteFileNames` - List of sprite references expected, order matters, index = ID 
 export class MapFile {
     constructor(public mapContent: MapContent, public spriteFileNames: string[]) {}
 }

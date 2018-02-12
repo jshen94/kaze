@@ -17,6 +17,7 @@
             "allow-pascal-case"
         ],
         "curly": [true, "ignore-same-line"],
+        "no-trailing-whitespace": false,
         "max-classes-per-file": false,
         "new-parens": false,
         "trailing-comma": false,
@@ -26,7 +27,8 @@
         "no-console": false,
         "no-bitwise": false,
         "no-empty": false,
-        "comment-format": false
+        "comment-format": false,
+        "radix": false
     },
     "rulesDirectory": []
 }
