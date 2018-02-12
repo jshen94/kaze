@@ -393,8 +393,8 @@ class App extends React.Component<IAppProps, {}> {
 
     // For performance,
     // child elements will directly change the DOM and the `mutableX` fields below,
-    // it is synced with the store on save,
-    // if the store sends props down, as a reaction to save, or if a new map is loaded,
+    // it is synced with the store on save, edit, new, etc.
+    // If the store sends props down, as a reaction to save, or if a new map is loaded,
     // then replace the mutable state if it's different
 
     mutableRows: number[][] = [];

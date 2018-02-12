@@ -1,3 +1,6 @@
-# simplified multiplayer web infantry, in progress
-[sample]: screenshot.png
-![Sample][sample]
+# simplified multiplayer web infantry
+# in progress
+
+![alt text](screenshot.png)
+
+![alt text](screenshot2.png)
