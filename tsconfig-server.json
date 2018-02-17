@@ -10,5 +10,8 @@
     "files": [
         "./src/duel-zone/server.ts",
         "./src/web/server.ts"
+    ],
+    "include": [
+        "spec/**/*.ts"
     ]
 }

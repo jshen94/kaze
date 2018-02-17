@@ -15,6 +15,25 @@ export class Dot {
     constructor(public position: Vec2d) {}
 }
 
+export enum BlockEdge {
+    Left, Right, Top, Bottom
+}
+
+export const blockToEdge = (blockLength: number, bx: number, by: number, edge: BlockEdge): Calcs.LineSegment => {
+    let r: Calcs.LineSegment;
+
+    if (edge === BlockEdge.Right) r = {start: new Vec2d(bx + 1, by), end: new Vec2d(bx + 1, by + 1)};
+    else if (edge === BlockEdge.Bottom) r = {start: new Vec2d(bx, by + 1), end: new Vec2d(bx + 1, by + 1)};
+    else if (edge === BlockEdge.Left) r = {start: new Vec2d(bx, by), end: new Vec2d(bx, by + 1)};
+    else if (edge === BlockEdge.Top) r = {start: new Vec2d(bx, by), end: new Vec2d(bx + 1, by)};
+    else throw new Error('invalid BlockEdge argument');
+
+    r.start.mult(blockLength);
+    r.end.mult(blockLength);
+
+    return r;
+};
+
 export class Block {
     readonly dots: Map<number, Dot> = new Map<number, Dot>();
     readonly rects: Map<number, Rect> = new Map<number, Rect>();
@@ -25,9 +44,9 @@ export class Block {
         return this.dots.entries().next().done && this.rects.entries().next().done;
     }
 
-    forEachDotCollideWithRect(dot: Dot, isFinished: (rect: Rect) => boolean) {
+    forEachVec2dCollideWithRect(v: Vec2d, isFinished: (rect: Rect) => boolean) {
         for (const rect of this.rects.values()) {
-            if (rect.containsVec(dot.position)) {
+            if (rect.containsVec(v)) {
                 if (isFinished(rect)) return true;
             }
         }
@@ -143,8 +162,8 @@ export class SpatialHash {
         this.all.dots.forEach(func);
     }
 
-    loopDot(dot: Dot, isReading: boolean, func: (block: Block, bx: number, by: number) => void) {
-        const b = this.pixelToBlock(dot.position.x, dot.position.y);
+    loopVec2d(v: Vec2d, isReading: boolean, func: (block: Block, bx: number, by: number) => void) {
+        const b = this.pixelToBlock(v.x, v.y);
         if (this.isBlockOutside(b)) return;
         const block = this.getBlock(b.x, b.y, isReading);
         func(block, b.x, b.y);
@@ -184,8 +203,8 @@ export class SpatialHash {
         return this.loopPixels(rect.position.x, rect.position.y, rect.discreteX2, rect.discreteY2, isReading, isFinished);
     }
 
-    loopDotCollideWithRect(dot: Dot, func: (rect: Rect) => boolean): void {
-        this.loopDot(dot, true, (b) => b.forEachDotCollideWithRect(dot, func));
+    loopVec2dCollideWithRect(v: Vec2d, func: (rect: Rect) => boolean): void {
+        this.loopVec2d(v, true, (b) => b.forEachVec2dCollideWithRect(v, func));
     }
 
     loopRectCollideWithRect(rect: Rect, isFinished: (rect: Rect) => boolean): boolean {
@@ -220,7 +239,7 @@ export class SpatialHash {
     }
 
     addDot(dot: Dot): void {
-        this.loopDot(dot, false, (b) => {
+        this.loopVec2d(dot.position, false, (b) => {
             b.dots.set(dot.id, dot);
         });
     }
@@ -229,7 +248,7 @@ export class SpatialHash {
         const dot = this.all.dots.get(id);
         if (dot === undefined) throw new Error('removing invalid dot');
         console.assert(dot.id === id, 'dot key id is not actual id');
-        this.loopDot(dot, false, (b) => {
+        this.loopVec2d(dot.position, false, (b) => {
             b.dots.delete(dot.id);
         });
     }

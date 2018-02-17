@@ -15,6 +15,7 @@ import Vec2d = Calcs.Vec2d;
 import Direction = Controls.Direction;
 import BarrierType = FloorTileGrid.BarrierType;
 import Interpolator = Interpolator_.Interpolator;
+import BlockEdge = SpatialHash.BlockEdge;
 
 // Pass to createGameScene to create update loop
 export class GameSceneData {
@@ -455,7 +456,64 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
         character.accel.magnitude(character.movementAccelMag);
     };
 
-    const testBarrierCollision = (rect: Calcs.Rect): boolean => {
+    const blockHasBarrier = (bx: number, by: number, blockEdge: BlockEdge): boolean => {
+        if (data.getBarrierType === undefined) return false; // No barriers
+        let barrierType: BarrierType | null = null;
+        switch (blockEdge) {
+            case BlockEdge.Right:
+                barrierType = data.getBarrierType(bx + 1, by);
+                return barrierType === BarrierType.Left || barrierType === BarrierType.LeftTop;
+            case BlockEdge.Bottom:
+                barrierType = data.getBarrierType(bx, by + 1);
+                return barrierType === BarrierType.Top || barrierType === BarrierType.LeftTop;
+            case BlockEdge.Left:
+                barrierType = data.getBarrierType(bx, by);
+                return barrierType === BarrierType.Left || barrierType === BarrierType.LeftTop;
+            case BlockEdge.Top:
+                barrierType = data.getBarrierType(bx, by);
+                return barrierType === BarrierType.Top || barrierType === BarrierType.LeftTop;
+        }
+        throw new Error('invalid block edge');
+    };
+
+    //** Does not handle extremely fast bullets
+    const testBarrierCollisionDot = (dot: SpatialHash.Dot, afterPos: Vec2d): boolean => {
+        if (data.getBarrierType === undefined) return false; // No barriers
+
+        const blockLength = controller.grid.blockLength;
+        let isCollision = false;
+
+        // Note: These "loops" only execute once
+        controller.grid.loopVec2d(dot.position, true, (blockBefore: SpatialHash.Block, bxBefore: number, byBefore: number) => {
+            controller.grid.loopVec2d(afterPos, true, (blockAfter: SpatialHash.Block, bxAfter: number, byAfter: number) => {
+                if (bxAfter !== bxBefore) {
+                    const beforeEdge = bxBefore < bxAfter ? BlockEdge.Right : BlockEdge.Left;
+                    if (blockHasBarrier(bxBefore, byBefore, beforeEdge)) {
+                        const lineSeg = SpatialHash.blockToEdge(blockLength, bxBefore, byBefore, beforeEdge);
+                        if (Calcs.lineSegIntersects(lineSeg.start, lineSeg.end, dot.position, afterPos)) {
+                            isCollision = true;
+                            return;
+                        }
+                    }
+                }
+                if (byAfter !== byBefore) {
+                    const beforeEdge = byBefore < byAfter ? BlockEdge.Bottom : BlockEdge.Top;
+                    if (blockHasBarrier(bxBefore, byBefore, beforeEdge)) {
+                        const lineSeg = SpatialHash.blockToEdge(blockLength, bxBefore, byBefore, beforeEdge);
+                        if (Calcs.lineSegIntersects(lineSeg.start, lineSeg.end, dot.position, afterPos)) {
+                            isCollision = true;
+                            return;
+                        }
+                    }
+                }
+            });
+        });
+
+        return isCollision;
+    };
+
+    //** Does not handle small, fast rectangles
+    const testBarrierCollisionRect = (rect: Calcs.Rect): boolean => {
         if (data.getBarrierType === undefined) return false;
 
         const topLeft = controller.grid.pixelToBlock(rect.position.x, rect.position.y);
@@ -483,7 +541,7 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
 
     const testCollision = (character: Character): boolean => {
         if (controller.grid.isRectOutside(character)) return true;
-        if (testBarrierCollision(character)) return true;
+        if (testBarrierCollisionRect(character)) return true;
 
         return controller.grid.loopRectCollideWithRect(character, (collidedRect) => {
             if (collidedRect instanceof Thing) {
@@ -772,11 +830,20 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
         if (bullet.lifetime < 0 || controller.grid.isDotOutside(bullet)) {
             unregisterBulletAndTrigger(bullet);
         } else {
-            const newX = bullet.velocity.x * diff + bullet.position.x;
-            const newY = bullet.velocity.y * diff + bullet.position.y;
-            controller.grid.editDot(bullet, newX, newY);
-            // TODO - Barrier collisions
-            controller.grid.loopDotCollideWithRect(bullet, (rect: SpatialHash.Rect) => {
+
+            // Barrier collision checks
+            const newPos = new Vec2d(bullet.velocity.x * diff + bullet.position.x, bullet.velocity.y * diff + bullet.position.y);
+            const isBarrierCollision = testBarrierCollisionDot(bullet, newPos);
+            if (isBarrierCollision) {
+                unregisterBulletAndTrigger(bullet);
+                return;
+            }
+
+            // Move next position
+            controller.grid.editDot(bullet, newPos.x, newPos.y);
+
+            // Character collision checks
+            controller.grid.loopVec2dCollideWithRect(bullet.position, (rect: SpatialHash.Rect) => {
                 if (rect instanceof Character) {
                     const character = rect as Character;
                     if (!character.off && bullet.owner.id !== character.id) {

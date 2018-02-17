@@ -1,5 +1,10 @@
 import _ = require('lodash');
 
+export type LineSegment = {
+    start: Vec2d;
+    end: Vec2d;
+}
+
 export class Rect {
     constructor(public size: Vec2d, public position: Vec2d) {}
 
@@ -287,4 +292,19 @@ export const funcToMap = (func: (i: number) => number, start: number, end: numbe
         map.set(i, func(i));
     }
     return map;
+};
+
+export const lineSegIntersects = (a: Vec2d, a2: Vec2d, b: Vec2d, b2: Vec2d): boolean => {
+    const vax = a2.x - a.x;
+    const vay = a2.y - a.y;
+
+    const vbx = b2.x - b.x;
+    const vby = b2.y - b.y;
+
+    const t0 = (vby * (a.x - b.x) - vbx * (a.y - b.y)) / (vbx * vay - vby * vax)
+    if (t0 < 0 || t0 > 1) return false;
+    const t1 = (vay * (b.x - a.x) - vax * (b.y - a.y)) / (vax * vby - vay * vbx)
+    if (t1 < 0 || t1 > 1) return false;
+
+    return true;
 };

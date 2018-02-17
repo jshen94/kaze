@@ -183,7 +183,7 @@ class SpriteBar extends React.Component<ISpriteBarProps, ISpriteBarState> {
     constructor(props: ISpriteBarProps) {
         super(props);
         this.state = {
-            // Note: _selectedIndex includes the default sprite, which is not included in spriteUrls
+            // Note: selectedIndex includes the default sprite, which is not included in spriteUrls
             selectedIndex: 0
         };
     }
@@ -215,11 +215,13 @@ class SpriteBar extends React.Component<ISpriteBarProps, ISpriteBarState> {
 
 interface IGridProps {
     mapContent: MapFile.MapContent;
+
     selectedSpriteIndex: number;
     spriteUrls: string[];
-    onSetTile: (x: number, y: number, selectedSpriteIndex: number) => void;
-    onSetBarrier: (x: number, y: number, barrierType: FloorTileGrid.BarrierType) => void;
-    onUpdateMarker: (strKey: string) => string | null | false;
+
+    onSetTileMutable: (x: number, y: number, selectedSpriteIndex: number) => void;
+    onSetBarrierMutable: (x: number, y: number, barrierType: FloorTileGrid.BarrierType) => void;
+    onUpdateMarkerMutable: (strKey: string) => string | null | false;
 }
 
 const BarrierBorderStyle = '2px dotted white';
@@ -278,7 +280,7 @@ class Grid extends React.Component<IGridProps, {}> {
             const $divSiblings = $(element).siblings('div');
             if ($divSiblings.length === 0) throw new Error('could not find <img> text div');
 
-            const newKey = this.props.onUpdateMarker(strKey);
+            const newKey = this.props.onUpdateMarkerMutable(strKey);
             if (newKey === false) { // Delete
                 $divSiblings.text('');
             } else if (newKey !== null) { // New string
@@ -294,7 +296,7 @@ class Grid extends React.Component<IGridProps, {}> {
             else if (e.key === 'd') barrierType = FloorTileGrid.BarrierType.None;
 
             if (barrierType !== null) {
-                this.props.onSetBarrier(bx, by, barrierType);
+                this.props.onSetBarrierMutable(bx, by, barrierType);
 
                 const newStyle = this.getImgBorderStyle(barrierType);
                 Object.assign(element.style, newStyle);
@@ -303,8 +305,22 @@ class Grid extends React.Component<IGridProps, {}> {
         }
     }
 
+    onTileClick = (e: React.MouseEvent<HTMLImageElement>): void => {
+        const x = parseInt(e.currentTarget.dataset.x || '');
+        const y = parseInt(e.currentTarget.dataset.y || '');
+
+        if (isNaN(x)) throw new Error('invalid tile x');
+        if (isNaN(y)) throw new Error('invalid tile y');
+
+        this.props.onSetTileMutable(x, y, this.props.selectedSpriteIndex);
+        e.currentTarget.src = this.getSelectedSrc();
+        console.log(`debug - ${x}, ${y}, ${this.props.selectedSpriteIndex}`);
+    }
+
+    //////////////////////////////////////////////////
+
     // Sanity check - the following do not access `mutableX` fields, only the
-    // original props, but that is OK because they are supposed to only be used
+    // original `props.mapContent`, but that is OK because they are supposed to only be used
     // in render(), which is not synced with the `mutableX` fields
 
     getSrc(x: number, y: number): string {
@@ -322,18 +338,6 @@ class Grid extends React.Component<IGridProps, {}> {
         const index = this.props.selectedSpriteIndex; 
         const src = index >= 0 ? this.props.spriteUrls[index] : floorPng;
         return src;
-    }
-
-    onTileClick = (e: React.MouseEvent<HTMLImageElement>): void => {
-        const x = parseInt(e.currentTarget.dataset.x || '');
-        const y = parseInt(e.currentTarget.dataset.y || '');
-
-        if (isNaN(x)) throw new Error('invalid tile x');
-        if (isNaN(y)) throw new Error('invalid tile y');
-
-        this.props.onSetTile(x, y, this.props.selectedSpriteIndex);
-        e.currentTarget.src = this.getSelectedSrc();
-        console.log(`debug - ${x}, ${y}, ${this.props.selectedSpriteIndex}`);
     }
 
     render(): JSX.Element {
@@ -423,15 +427,15 @@ class App extends React.Component<IAppProps, {}> {
 
     //////////////////////////////////////////////////
 
-    onSetTile = (x: number, y: number, selectedSpriteIndex: number): void => {
+    onSetTileMutable = (x: number, y: number, selectedSpriteIndex: number): void => {
         this.mutableRows[y][x] = selectedSpriteIndex;
     }
 
-    onSetBarrier = (x: number, y: number, barrierType: FloorTileGrid.BarrierType): void => {
+    onSetBarrierMutable = (x: number, y: number, barrierType: FloorTileGrid.BarrierType): void => {
         this.mutableBarrierRows[y][x] = barrierType;
     }
 
-    onUpdateMarker = (strKey: string): string | null | false => {
+    onUpdateMarkerMutable = (strKey: string): string | null | false => {
         const marker = this.mutableMarkers[strKey];
 
         if (marker === undefined) { // New marker
@@ -495,19 +499,23 @@ class App extends React.Component<IAppProps, {}> {
                     onEditMap={this.onEditMap}
                     onSaveMap={this.onSaveMap}
                     onNewMap={this.onNewMap} />
+
                 <SpriteBar 
                     spriteUrls={this.props.spriteUrls} 
                     onSpriteSelect={this.props.onSpriteSelect} />
+
                 <div style={{background: '#e5e8e8', paddingLeft: '5px'}}>
                     Barrier commands: a - Left, w - Top, s - Both, d - Delete, q - Marker
                 </div>
+
                 <Grid 
                     mapContent={this.props.mapContent}
                     spriteUrls={this.props.spriteUrls}
                     selectedSpriteIndex={this.props.selectedSpriteIndex}
-                    onSetTile={this.onSetTile} 
-                    onSetBarrier={this.onSetBarrier}
-                    onUpdateMarker={this.onUpdateMarker} />
+
+                    onSetTileMutable={this.onSetTileMutable} 
+                    onSetBarrierMutable={this.onSetBarrierMutable}
+                    onUpdateMarkerMutable={this.onUpdateMarkerMutable} />
             </div>
         );
     }
