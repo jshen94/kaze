@@ -16,6 +16,7 @@ import Controls = require('../kaze/controls');
 import Shared = require('./index-server');
 import Components = require('../kaze/components');
 
+import VirtualFloorTileGrid = FloorTileGrid.VirtualFloorTileGrid;
 import IHasDuelZoneCharacterData = Shared.IHasDuelZoneCharacterData;
 import DuelZoneCharacterData = Shared.DuelZoneCharacterData;
 
@@ -65,7 +66,9 @@ _.forOwn(imageFileToUrl, (value, key) => {
 
 // Map
 
-const parsedMapJson: object = require('../../assets/hank.json'); // Webpack will parse
+// Webpack will parse
+const parsedMapJson = require('../../assets/hank.json') as MapFile.MapFile; 
+const parsedDsMapJson = require('../../assets/dropship.json') as MapFile.MapFile;
 
 //////////////////////////////////////////////////
 // DOM
@@ -94,21 +97,37 @@ const detachedControls = new Controls.Controls();
 detachedControls.register(canvas);
 
 const playerT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./black.png'], 1, 1); // Webpack prefixes with ./
-const floorTileGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson as MapFile.MapFile, imageFileToSpriteSheet, 'floor.png');
+
+const grid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson, imageFileToSpriteSheet, 'floor.png');
+const dsGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedDsMapJson, imageFileToSpriteSheet, 'floor.png');
+
 const explosionT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./explosion.png'], 2, 2);
 explosionT.tickInterval = 99;
 explosionT.autoTick = true;
 Shared.boom.spriteSheet = explosionT; // Since client side, add the sprite in
 
+const getFloorDs = FloorTileGrid.makeGetFloorTilePattern(dsGrid);
+const getFloor = FloorTileGrid.makeGetFloorTileRegion(grid);
+const getBarrDs = FloorTileGrid.makeGetBarrierTypePattern(dsGrid);
+const getBarr = FloorTileGrid.makeGetBarrierTypeRegion(grid);
+
+const bigGrid = FloorTileGrid.combine([
+    [VirtualFloorTileGrid.getEmpty(3, 3), new VirtualFloorTileGrid(dsGrid.blockWidth * 2, dsGrid.blockHeight * 2, getBarrDs, getFloorDs)],
+    [VirtualFloorTileGrid.getEmpty(3, 3)],
+    [new VirtualFloorTileGrid(grid.blockWidth, grid.blockHeight, getBarr, getFloor)]
+]);
+
 const sceneData = Shared.makeSceneData();
-sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(floorTileGrid, 0, 0);
-sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
+sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(bigGrid);
+sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(bigGrid);
+
 sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
     return true; // Make bullet disappear
 };
+
 sceneData.onBegin = (controller: GameScene.Controller): void => {
     let ticker = 0;
-    const timeBox = new GameScene.UiBox(['[TimeBox]'], 5, 5, 150);
+    const timeBox = new GameScene.UiBox(['Testing 123'], 5, 5, 150);
     controller.uiBoxes.push(timeBox);
     setInterval(() => {
         ticker++;
@@ -150,7 +169,6 @@ const spawnExplosion = (
 };
 
 const getWeapon = (id: number): GameScene.Weapon => {
-    // TODO
     if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
     else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
     else if (id === Shared.rocketWeapon.id) return Shared.rocketWeapon;

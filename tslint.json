@@ -28,7 +28,8 @@
         "no-bitwise": false,
         "no-empty": false,
         "comment-format": false,
-        "radix": false
+        "radix": false,
+        "array-type": false
     },
     "rulesDirectory": []
 }

@@ -1,14 +1,18 @@
 # simplified multiplayer web infantry (in progress)
 
-![alt text](screenshot.png)
-
 next to-do:
-- move handlers to objects
+- tests for functions in floor-tile-grid, game-scene-network, write auto pack
+- fix shoot thru barriers, line segment edge case?
+- center explosion
+- move handlers to objects, or not?
+- make writing new zone less boilerplate? give client/server layer full access to game-scene.ts
 - game-scene.ts full menu object w/ callbacks
-- game-scene.ts teleporter object
-- performance?
+- performance
 - rethink controls 
-- and finally, 1 proper zone file instead of current 2 file networking mess
-- a real mini-zone using above zone file format
+- map editor handle duplicate marker names
+- switch art to braindead simple pixels
+- a simple test zone
+- loading screen helpers in react (ie. when importing maps or connecting)
 
+![alt text](screenshot.png)
 ![alt text](screenshot2.png)

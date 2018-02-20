@@ -4,15 +4,17 @@
 
 import GameScene = require('../kaze/game-scene');
 import Calcs = require('../kaze/calcs');
+import FloorTileGrid = require('../kaze/floor-tile-grid');
+
 import NetworkedCharacter = GameScene.NetworkedCharacter;
 import Character = GameScene.Character;
 
 export const MapWidth = null;
-export const MapHeight = 20;
+export const MapHeight = null;
 export const MapBlockLength = 50;
 
-export const CharacterHeight = 40;
-export const CharacterWidth = 40;
+export const CharacterHeight = 30;
+export const CharacterWidth = 30;
 
 export const ViewportWidth = 500;
 export const ViewportHeight = 500;
@@ -61,9 +63,6 @@ rocketWeapon.prefire = 1000;
 rocketWeapon.bulletShape = GameScene.BulletShape.Circle;
 rocketWeapon.bulletLength = 10;
 rocketWeapon.requireStationary = true;
-
-//BEAM GRENADE
-//boom.fragmentTypes.push({weapon: rocketWeapon, fragmentCount: 8});
 
 export class DuelZoneCharacterData {
     kills: number = 0;

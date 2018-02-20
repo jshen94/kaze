@@ -1,8 +1,27 @@
+import _ = require('lodash');
+
 import Calcs = require('./calcs');
 import FloorTileGrid = require('./floor-tile-grid');
 import BarrierType = FloorTileGrid.BarrierType;
 
 export type MarkerMap = {[s: string]: string;}
+export type InverseMarkerMap = {[s: string]: string;}
+
+export const invertMarkersObject = (markers: MarkerMap): InverseMarkerMap => { 
+    const inverted = _.invert(markers);
+    if (Object.keys(inverted).length !== Object.keys(markers).length) throw new Error('markers had duplicate names and were not invertible');
+    return inverted;
+};
+
+const markerCoordRegex = /^(\d*),(\d*)$/;
+export const parseMarkerCoord = (coord: string): Calcs.Vec2d => {
+    const result = markerCoordRegex.exec(coord);
+    if (result === null) throw new Error('invalid marker coord');
+    const a = parseInt(result[1]);
+    const b = parseInt(result[2]);
+    if (a === undefined || isNaN(a) || b === undefined || isNaN(b)) throw new Error('invalid marker coord');
+    return new Calcs.Vec2d(a, b);
+};
 
 export class MapContent {
     name: string = 'New map';

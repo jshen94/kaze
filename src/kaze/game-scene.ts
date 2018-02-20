@@ -2,6 +2,8 @@
 // Main gameplay loop, drawing, physics, etc
 //////////////////////////////////////////////////
 
+import _ = require('lodash');
+
 import Calcs = require('./calcs');
 import Draw = require('./draw');
 import Controls = require('./controls');
@@ -10,6 +12,7 @@ import GsNetwork = require('./game-scene-network');
 import SpatialHash = require('./spatial-hash');
 import FloorTileGrid = require('./floor-tile-grid');
 import Scene = require('./scene');
+import MapFile = require('./map-file');
 
 import Vec2d = Calcs.Vec2d;
 import Direction = Controls.Direction;
@@ -30,13 +33,12 @@ export class GameSceneData {
     blockWidth: number | null = 10; // null = Infinite
     blockHeight: number | null = 10;
     blockLength: number = 50;
-    getFloorTile?: (i: number, j: number) => Draw.AnimatedSpriteSheet | null;
-    getBarrierType?: (i: number, j: number) => BarrierType | null;
+    getFloorTile?: FloorTileGrid.GetTileFunc<Draw.AnimatedSpriteSheet>;
+    getBarrierType?: FloorTileGrid.GetTileFunc<BarrierType>;
 
     // Events
     onCharacterBulletHit?: (c: Controller, ch: Character, b: Bullet) => boolean;
     onNetCharacterBulletHit?: (c: Controller, ch: NetworkedCharacter, b: Bullet) => boolean;
-    onCharacterThingCollision?: (c: Controller, ch: Character, t: Thing) => void;
     onNetCharacterThingCollision?: (c: Controller, ch: NetworkedCharacter, t: Thing) => void;
     onCharacterExplosionHit?: (c: Controller, ch: Character, e: Explosion) => void;
     onNetCharacterExplosionHit?: (c: Controller, ch: NetworkedCharacter, e: Explosion) => void;
@@ -82,6 +84,60 @@ export class Thing extends SpatialHash.Rect implements IHasSpriteSheet {
         super(size, position);
     }
 }
+
+export class Teleporter extends Thing {
+    constructor(public destination: Vec2d, size: Vec2d, position: Vec2d) {
+        super(SolidType.NotSolid, -1, [], size, position);
+    }
+}
+
+export class TeleporterSpec {
+    constructor(public markerFrom: string,
+                public markerTo: string,
+                public size: Vec2d = new Vec2d(50, 50)) {}
+}
+
+export class TeleImportMapSpec {
+    constructor(public map: MapFile.MapFile,
+                public offsetX: number = 0,
+                public offsetY: number = 0) {}
+}
+ 
+type InvertedMarkersRelocated = {[s: string]: Vec2d};
+
+export const importTeleporters = (
+    mapSpecs: TeleImportMapSpec[],
+    specs: TeleporterSpec[],
+    controller: Controller): void => {
+
+    const invertedMarkersRelocated: InvertedMarkersRelocated = {};
+
+    mapSpecs.forEach((mapSpec) => {
+        const someInv = MapFile.invertMarkersObject(mapSpec.map.mapContent.markers);
+        const someInvRelocated: InvertedMarkersRelocated = {};
+        _.forIn(someInv, (value, key) => {
+            const coord = MapFile.parseMarkerCoord(value);
+            coord.x += mapSpec.offsetX;
+            coord.y += mapSpec.offsetY;
+            someInvRelocated[key] = coord;
+        });
+        Object.assign(invertedMarkersRelocated, someInvRelocated);
+    });
+
+    specs.forEach((spec) => {
+        const from = invertedMarkersRelocated[spec.markerFrom];
+        const to = invertedMarkersRelocated[spec.markerTo];
+
+        if (from === undefined) throw new Error('from marker not found in teleporter spec');
+        if (to === undefined) throw new Error('to marker not found in teleporter spec');
+
+        const fromPixels = from.mult(controller.grid.blockLength);
+        const toPixels = to.mult(controller.grid.blockLength);
+        const teleporter = new Teleporter(toPixels, spec.size, fromPixels);
+
+        controller.grid.registerRect(teleporter);
+    });
+};
 
 // Fires *weapon* in all directions with *fragmentCount* number of directions
 export interface IExplosionFragment {
@@ -539,15 +595,45 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
         return false;
     };
 
-    const testCollision = (character: Character): boolean => {
+    const testCharCollBoundsThings = (character: Character): boolean => {
         if (controller.grid.isRectOutside(character)) return true;
         if (testBarrierCollisionRect(character)) return true;
 
         return controller.grid.loopRectCollideWithRect(character, (collidedRect) => {
             if (collidedRect instanceof Thing) {
-                if (collidedRect.solidType !== SolidType.NotSolid) {
-                    if (data.onCharacterThingCollision) data.onCharacterThingCollision(controller, character, collidedRect);
-                    return true;
+                if (collidedRect.solidType !== SolidType.NotSolid) return true;
+            }
+            return false;
+        });
+    };
+
+    const handleCharTeleColl = (character: Character): void => {
+        controller.grid.loopRectCollideWithRect(character, (collidedRect) => {
+            if (collidedRect instanceof Teleporter) {
+                const teleporter = collidedRect as Teleporter;
+                character.position = Vec2d.copy(teleporter.destination);
+                return true;
+            }
+            return false;
+        });
+    };
+
+    const handleCharBulletColl = (character: IDrawableCharacter): void => {
+        controller.grid.loopRectCollideWithDot(character, (dot) => {
+            if (dot instanceof Bullet) {
+                const bullet = dot as Bullet;
+                if (bullet.owner.id !== character.id) {
+                    if (character instanceof NetworkedCharacter) {
+                        if (data.onNetCharacterBulletHit && data.onNetCharacterBulletHit(controller, character, bullet)) {
+                            unregisterBulletAndTrigger(bullet);
+                            return true;
+                        }
+                    } else if (character instanceof Character) {
+                        if (data.onCharacterBulletHit && data.onCharacterBulletHit(controller, character, bullet)) {
+                            unregisterBulletAndTrigger(bullet);
+                            return true;
+                        }
+                    }
                 }
             }
             return false;
@@ -610,7 +696,7 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
                 throw new Error('invalid firingStage');
             }
         }
-    }
+    };
 
     const updateNetworkedCharacter = (
         character: NetworkedCharacter, diff: number, width: number, height: number
@@ -628,6 +714,8 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
         character.position = interpolated.position;
         character.aim = interpolated.aim;
         character.hp = interpolated.other.hp;
+
+        handleCharBulletColl(character);
     };
 
     const updateLocalCharacter = (character: Character, diff: number): void => {
@@ -731,10 +819,10 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
             // If collided, then need to revert position
 
             controller.grid.editRect(character, newX, oldY);
-            const collisionX = testCollision(character);
+            const collisionX = testCharCollBoundsThings(character);
 
             controller.grid.editRect(character, oldX, newY);
-            const collisionY = testCollision(character);
+            const collisionY = testCharCollBoundsThings(character);
 
             if (collisionX && collisionY) controller.grid.editRect(character, oldX, oldY);
             else if (collisionY) controller.grid.editRect(character, newX, oldY);
@@ -759,6 +847,9 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
                 if (character.autoHBounce) character.horizontal *= -1;
             }
         }
+
+        handleCharBulletColl(character);
+        handleCharTeleColl(character);
 
         // Weapons
 
@@ -842,34 +933,19 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
             // Move next position
             controller.grid.editDot(bullet, newPos.x, newPos.y);
 
-            // Character collision checks
-            controller.grid.loopVec2dCollideWithRect(bullet.position, (rect: SpatialHash.Rect) => {
-                if (rect instanceof Character) {
-                    const character = rect as Character;
-                    if (!character.off && bullet.owner.id !== character.id) {
-                        if (data.onCharacterBulletHit && data.onCharacterBulletHit(controller, character, bullet)) {
-                            unregisterBulletAndTrigger(bullet);
-                            return true;
-                        }
-                    }
-                } else if (rect instanceof NetworkedCharacter) {
-                    const character = rect as NetworkedCharacter;
-                    if (!character.off && bullet.owner.id !== character.id) {
-                        if (data.onNetCharacterBulletHit && data.onNetCharacterBulletHit(controller, character, bullet)) {
-                            unregisterBulletAndTrigger(bullet);
-                            return true;
-                        }
-                    }
-                } else if (rect instanceof Thing) {
-                    const thing = rect as Thing;
-                    if (thing.solidType === SolidType.BlockAll) {
-                        unregisterBulletAndTrigger(bullet);
-                        return true;
-                    }
-                }
-                return false;
-            });
+            // Do not check collisions here, because usually # bullets >>> # things
         }
+    };
+
+    const updateThingDefault = (thing: Thing): void => {
+        if (thing.solidType !== SolidType.BlockAll) return;
+        controller.grid.loopRectCollideWithDot(thing, (dot) => {
+            if (dot instanceof Bullet) {
+                unregisterBulletAndTrigger(dot as Bullet);
+                return true;
+            }
+            return false;
+        });
     };
 
     // Returns true to request finish
@@ -901,6 +977,8 @@ export const createGameScene = (data: GameSceneData): IGameScene => {
             } else if (rect instanceof Explosion) {
                 const explosion = rect as Explosion;
                 updateExplosion(explosion, diff);
+            } else if (rect instanceof Thing) { // None of the above
+                updateThingDefault(rect as Thing);
             }
         });
 

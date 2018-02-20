@@ -44,7 +44,16 @@ export class Block {
         return this.dots.entries().next().done && this.rects.entries().next().done;
     }
 
-    forEachVec2dCollideWithRect(v: Vec2d, isFinished: (rect: Rect) => boolean) {
+    forEachRectCollideWithVec2d(rect: Rect, isFinished: (dot: Dot) => boolean): boolean {
+        for (const dot of this.dots.values()) {
+            if (rect.containsVec(dot.position)) {
+                if (isFinished(dot)) return true;
+            }
+        }
+        return false;
+    }
+
+    forEachVec2dCollideWithRect(v: Vec2d, isFinished: (rect: Rect) => boolean): boolean {
         for (const rect of this.rects.values()) {
             if (rect.containsVec(v)) {
                 if (isFinished(rect)) return true;
@@ -53,7 +62,7 @@ export class Block {
         return false;
     }
 
-    forEachRectCollideWithRect(rect: Rect, isFinished: (rect: Rect) => boolean) {
+    forEachRectCollideWithRect(rect: Rect, isFinished: (rect: Rect) => boolean): boolean {
         for (const otherRect of this.rects.values()) {
             if (rect.collidesWith(otherRect)) {
                 if (isFinished(otherRect)) return true;
@@ -209,6 +218,10 @@ export class SpatialHash {
 
     loopRectCollideWithRect(rect: Rect, isFinished: (rect: Rect) => boolean): boolean {
         return this.loopRect(rect, true, (b) => b.forEachRectCollideWithRect(rect, isFinished));
+    }
+
+    loopRectCollideWithDot(rect: Rect, isFinished: (dot: Dot) => boolean): boolean {
+        return this.loopRect(rect, true, (b) => b.forEachRectCollideWithVec2d(rect, isFinished));
     }
 
     addRect(rect: Rect): void {

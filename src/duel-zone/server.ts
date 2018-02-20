@@ -11,8 +11,10 @@ import GsNetwork = require('../kaze/game-scene-network');
 import Shared = require('./index-server');
 import KazeServer = require('../kaze/server');
 import Calcs = require('../kaze/calcs');
+import MapFile = require('../kaze/map-file');
 
 import Vec2d = Calcs.Vec2d;
+import VirtualFloorTileGrid = FloorTileGrid.VirtualFloorTileGrid;
 import IHasDuelZoneCharacterData = Shared.IHasDuelZoneCharacterData;
 import DuelZoneCharacterData = Shared.DuelZoneCharacterData;
 
@@ -29,14 +31,27 @@ class DuelZoneCharacter extends GameScene.Character implements IHasDuelZoneChara
     }
 }
 
-const parsedMapJson = require('../../../assets/hank.json');
-const floorTileGrid = FloorTileGrid.FloorTileGrid.fromMapFileBarrierOnly(parsedMapJson);
+const parsedMapJson = require('../../../assets/hank.json') as MapFile.MapFile;
+const parsedDsMapJson = require('../../../assets/dropship.json') as MapFile.MapFile;
+
+const grid = FloorTileGrid.FloorTileGrid.fromMapFileBarrierOnly(parsedMapJson);
+const dsGrid = FloorTileGrid.FloorTileGrid.fromMapFileBarrierOnly(parsedDsMapJson);
 
 //////////////////////////////////////////////////
+
+// TODO Easier
+const inverted = MapFile.invertMarkersObject(parsedDsMapJson.mapContent.markers);
+const spawn = MapFile.parseMarkerCoord(inverted['spawn']);
 
 const addCharacter = (name: string): DuelZoneCharacter => {
     const character = new DuelZoneCharacter(name, Shared.CharacterWidth, Shared.CharacterWidth);
     scene.controller.grid.registerRect(character);
+    // TODO Easier
+    scene.controller.grid.editRect(
+        character,
+        spawn.x * Shared.MapBlockLength + 3 * Shared.MapBlockLength,
+        spawn.y * Shared.MapBlockLength
+    );
     return character;
 };
 const deleteCharacter = (character: DuelZoneCharacter): void => {
@@ -105,25 +120,40 @@ const respawnIfDead = (
     }
 };
 
+const getBarr = FloorTileGrid.makeGetBarrierTypeRegion(grid);
+const getBarrDs = FloorTileGrid.makeGetBarrierTypePattern(dsGrid);
+
+const bigGrid = FloorTileGrid.combine([
+    [VirtualFloorTileGrid.getEmpty(3, 3), new VirtualFloorTileGrid(dsGrid.blockWidth * 2, dsGrid.blockHeight * 2, getBarrDs)],
+    [VirtualFloorTileGrid.getEmpty(3, 3)],
+    [new VirtualFloorTileGrid(grid.blockWidth, grid.blockHeight, getBarr)]
+]);
+
 const sceneData = Shared.makeSceneData();
-sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(floorTileGrid, 0, 0);
-sceneData.onCharacterBulletHit = (
-    controller: GameScene.Controller,
-    _character: GameScene.Character,
-    bullet: GameScene.Bullet
-) => {
+sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(bigGrid);
+
+sceneData.onCharacterBulletHit = (controller, _character, bullet) => {
     const character = _character as DuelZoneCharacter;
     character.hp -= bullet.weapon.damage;
     respawnIfDead(controller, character, bullet.owner as DuelZoneCharacter);
     return true;
 };
+
 sceneData.onCharacterExplosionHit = (controller, _character, explosion) => {
     const character = _character as DuelZoneCharacter;
     character.hp -= explosion.explosionType.damage;
     respawnIfDead(controller, character, explosion.owner as DuelZoneCharacter);
     return true;
 };
+
 const scene = GameScene.createGameScene(sceneData);
+GameScene.importTeleporters([
+    new GameScene.TeleImportMapSpec(parsedMapJson, 0, 23),
+    new GameScene.TeleImportMapSpec(parsedDsMapJson, 3, 0)
+] , [
+    new GameScene.TeleporterSpec('outside', 'inside'),
+    new GameScene.TeleporterSpec('exit', 'hank', new Vec2d(400, 50))
+], scene.controller);
 
 //////////////////////////////////////////////////
 
