@@ -179,7 +179,11 @@ export class ExplosionType {
     // Pass to a weapon's OnBulletHit to create this explosion on hit
     onBulletHit = (controller: Controller, bullet: Bullet): void => {
         const explosion = new Explosion(
-            bullet.owner, this, bullet.position.x, bullet.position.y);
+            bullet.owner,
+            this,
+            bullet.position.x - this.size.x / 2,
+            bullet.position.y - this.size.y / 2
+        );
         controller.grid.registerRect(explosion);
     }
 }
@@ -276,6 +280,10 @@ export class Character extends SpatialHash.Rect implements IDrawableCharacter {
 
     getCurrentWeapon = (): Weapon => {
         return this.weapons[this.weaponIndex];
+    }
+
+    getCurrentWeaponIndex = (): number => {
+        return this.weaponIndex;
     }
 
     trySetWeaponIndex = (index: number): boolean => {

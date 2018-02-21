@@ -30,10 +30,10 @@ export class CharacterPartial {
     constructor(public hp: number) {}
 }
 
-const AIM_DEGREES = 128;
-const AIM_SLICE = 2 * Math.PI / AIM_DEGREES;
+export const AIM_DEGREES = 128;
+export const AIM_SLICE = 2 * Math.PI / AIM_DEGREES;
 
-const aimToNumber = (aim: Vec2d): number => {
+export const aimToNumber = (aim: Vec2d): number => {
     const angle = aim.atan2() + Math.PI; // Make above 0 (original is above -PI)
     let result = Math.floor(angle / AIM_SLICE);
     if (result === AIM_DEGREES) result = AIM_DEGREES - 1;
@@ -41,7 +41,7 @@ const aimToNumber = (aim: Vec2d): number => {
     return result;
 };
 
-const numberToAim = (n: number): Vec2d => {
+export const numberToAim = (n: number): Vec2d => {
     const v = new Vec2d(1, 0);
     v.rotate(n * AIM_SLICE - Math.PI);
     return v;
@@ -49,9 +49,9 @@ const numberToAim = (n: number): Vec2d => {
 
 // TODO - Autopack, move to net-helpers
 
-const MAX_WEAPON_COUNT = 8;
+export const MAX_WEAPON_COUNT = 8;
 
-const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizontal: Direction, weaponIndex: number): number => {
+export const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizontal: Direction, weaponIndex: number): number => {
     //** weaponIndex < MAX_WEAPON_COUNT;
 
     const positiveV = vertical + 1;
@@ -71,7 +71,7 @@ const packControls = (mouse: boolean, aim: Vec2d, vertical: Direction, horizonta
     return b;
 };
 
-const unpackControls = (packed: number, character: GameScene.Character): void => {
+export const unpackControls = (packed: number, character: GameScene.Character): void => {
     const controls = character.controls;
     // 2 bytes
     character.trySetWeaponIndex(packed & 7);
@@ -84,31 +84,6 @@ const unpackControls = (packed: number, character: GameScene.Character): void =>
     packed >>>= 2;
     controls.vertical = ((packed & 3) - 1) as Direction;
 };
-
-/*
-// TODO Testing framework, new API
-const testPackUnpackControls = (): void => {
-    for (let i = 0; i < 5; ++i) {
-        const controls = new Controls.Controls;
-        controls.vertical = (Math.floor(Math.random() * 3) - 1) as Direction;
-        controls.horizontal = (Math.floor(Math.random() * 3) - 1) as Direction;
-        controls.mouse = Math.random() > 0.5;
-        controls.aim = new Vec2d(Math.random() * 100, Math.random() * 100);
-        const n = packControls(controls.mouse, controls.aim, controls.vertical, controls.horizontal);
-        const b = new ArrayBuffer(2);
-        const view = new DataView(b);
-        view.setUint16(0, n);
-        const m = view.getUint16(0);
-        const controls2 = new Controls.Controls;
-        unpackControls(m, controls2);
-        if (Math.abs(controls.aim.atan2()) - Math.abs(controls2.aim.atan2()) >= AIM_SLICE) console.error('aim', controls.aim, controls2.aim);
-        if (controls.horizontal != controls2.horizontal) console.error('horizontal', controls.horizontal, controls2.horizontal);
-        if (controls.vertical != controls2.vertical) console.error('vertical', controls.vertical, controls2.vertical);
-        if (controls.mouse != controls2.mouse) console.error('mouse', controls.mouse, controls2.mouse);
-    }
-    console.log('done testPackUnpackControls');
-};
-*/
 
 //////////////////////////////////////////////////
 

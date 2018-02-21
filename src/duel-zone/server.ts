@@ -41,17 +41,15 @@ const dsGrid = FloorTileGrid.FloorTileGrid.fromMapFileBarrierOnly(parsedDsMapJso
 
 // TODO Easier
 const inverted = MapFile.invertMarkersObject(parsedDsMapJson.mapContent.markers);
-const spawn = MapFile.parseMarkerCoord(inverted['spawn']);
+const spawnBlockCoords = MapFile.parseMarkerCoord(inverted['spawn']);
+spawnBlockCoords.x += 3;
+spawnBlockCoords.y += 0;
+const spawnCoords = Vec2d.mult(spawnBlockCoords, Shared.MapBlockLength);
 
 const addCharacter = (name: string): DuelZoneCharacter => {
     const character = new DuelZoneCharacter(name, Shared.CharacterWidth, Shared.CharacterWidth);
     scene.controller.grid.registerRect(character);
-    // TODO Easier
-    scene.controller.grid.editRect(
-        character,
-        spawn.x * Shared.MapBlockLength + 3 * Shared.MapBlockLength,
-        spawn.y * Shared.MapBlockLength
-    );
+    scene.controller.grid.editRect(character, spawnCoords.x, spawnCoords.y);
     return character;
 };
 const deleteCharacter = (character: DuelZoneCharacter): void => {
@@ -100,8 +98,8 @@ const respawnIfDead = (
 
         controller.grid.editRect(
             character,
-            Math.random() * (400 - character.size.x - 1),
-            Math.random() * (400 - character.size.y - 1)
+            spawnCoords.x - 80 + Math.random() * 160,
+            spawnCoords.y - 80 + Math.random() * 160
         );
 
         server.broadcast(JSON.stringify({
