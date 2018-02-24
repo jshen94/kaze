@@ -76,13 +76,46 @@ const parsedDsMapJson = require('../../assets/dropship.json') as MapFile.MapFile
 const $root = $('<div />');
 $root.attr('id', 'root');
 $(document.body).append($root);
+
+interface IEverythingState {
+    isStoreShown: boolean;
+}
+
+class Everything extends React.Component<{}, IEverythingState> {
+    constructor(props: {}) {
+        super(props);
+        this.state = {isStoreShown: true};
+    }
+
+    onStoreClosed = (): void => {
+        this.setState({isStoreShown: false});
+    }
+
+    render(): JSX.Element {
+        return (
+            <Components.WindowContainer>
+                <Components.Canvas id='my-canvas'
+                                   width={Shared.ViewportWidth + 'px'}
+                                   height={Shared.ViewportHeight + 'px'}
+                                   isVisible={true}
+                />
+                <Components.Window title='Weapons'
+                                   background='white'
+                                   width={500}
+                                   onCloseClick={this.onStoreClosed}
+                                   isVisible={this.state.isStoreShown}>
+
+                    <Components.ListMenu items={[{text: 'Fenrir', onClick: () => alert(3)},
+                                                 {text: 'RR', onClick: () => alert(3)},
+                                                 {text: 'Power Armour', onClick: () => alert(3)}]} />
+                </Components.Window>
+            </Components.WindowContainer>
+        );
+    }
+}
+
 ReactDOM.render(
-    <Components.Canvas
-        id='my-canvas'
-        width={Shared.ViewportWidth + 'px'}
-        height={Shared.ViewportHeight + 'px'}
-        isVisible={true}
-    />, $root[0]
+    <Everything />, $root[0]
 );
 
 //////////////////////////////////////////////////

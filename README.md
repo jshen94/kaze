@@ -5,7 +5,6 @@ next to-do:
 - fix shoot thru barriers, line segment edge case?
 - move handlers to objects, or not?
 - make writing new zone less boilerplate? give client/server layer full access to game-scene.ts
-- game-scene.ts full menu object w/ callbacks
 - performance
 - rethink controls 
 - map editor handle duplicate marker names

@@ -197,8 +197,8 @@ class SpriteBar extends React.Component<ISpriteBarProps, ISpriteBarState> {
 
     render(): JSX.Element { 
         const includingDefault = [floorPng].concat(this.props.spriteUrls);
-        const imgs = includingDefault.map((src, i) => {
-            return <img 
+        const imgs = includingDefault.map((src, i) => (
+            <img 
                 style={{
                     borderStyle: i === this.state.selectedIndex ? 'solid' : 'none',
                     borderWidth: '2px',
@@ -207,8 +207,8 @@ class SpriteBar extends React.Component<ISpriteBarProps, ISpriteBarState> {
                 width='50px' height='50px'
                 onClick={this.onImageClick}
                 key={i} data-index={i}
-                src={src} />;
-        });
+                src={src} />
+        ));
         return <div style={{background: 'rgb(107,129,120)'}}>{imgs}</div>;
     }
 }
