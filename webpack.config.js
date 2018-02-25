@@ -2,7 +2,7 @@ const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
-const ClosureCompilerPlugin = require('webpack-closure-compiler');
+const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
 
 module.exports = {
     entry: {
@@ -26,13 +26,10 @@ module.exports = {
             chunks: ['map-editor'],
             template: path.resolve(__dirname, 'src/map-editor/template.html')
         }),
-        new ClosureCompilerPlugin({
-            compiler: {
-                language_in: 'ECMASCRIPT6',
-                language_out: 'ECMASCRIPT5',
-                compilation_level: 'SIMPLE'
-            },
-            concurrency: 3,
+        new UglifyJsPlugin({
+            sourceMap: true,
+            parallel: 3,
+            test: /\.js$/
         })
     ],
     resolve: {

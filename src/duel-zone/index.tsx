@@ -83,8 +83,6 @@ interface IEverythingState {
 }
 
 class Everything extends React.Component<{}, IEverythingState> {
-    private loginName: string;
-
     constructor(props: {}) {
         super(props);
         this.state = {isStoreShown: false, isLoginShown: true};
@@ -96,11 +94,12 @@ class Everything extends React.Component<{}, IEverythingState> {
 
     onLoginClose = (): void => {
         this.setState({isLoginShown: false});
-        setupAndConnect(this, this.loginName);
+        setupAndConnect(this, '');
     }
 
-    onLoginNameChange = (name: string): void => {
-        this.loginName = name;
+    onAccept = (name: string): void => {
+        this.setState({isLoginShown: false});
+        setupAndConnect(this, name);
     }
 
     render(): JSX.Element {
@@ -114,6 +113,7 @@ class Everything extends React.Component<{}, IEverythingState> {
                 <Components.Window title='Weapons'
                                    background='white'
                                    width={500}
+                                   initialTop={-Shared.ViewportHeight / 2 - 100} // The relative height hack implies the static position is below the canvas, move it up a bit
                                    onCloseClick={this.onStoreClosed}
                                    isVisible={this.state.isStoreShown}>
 
@@ -125,9 +125,10 @@ class Everything extends React.Component<{}, IEverythingState> {
                 <Components.Window title='Login'
                                    background='white'
                                    width={500}
+                                   initialTop={-Shared.ViewportHeight / 2 - 100} // The relative height hack implies the static position is below the canvas, move it up a bit
                                    onCloseClick={this.onLoginClose}
                                    isVisible={this.state.isLoginShown}>
-                    <Components.Login onNameChange={this.onLoginNameChange} />
+                    <Components.Login onAccept={this.onAccept} />
                 </Components.Window>
             </Components.WindowContainer>
         );

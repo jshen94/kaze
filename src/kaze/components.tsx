@@ -97,6 +97,7 @@ export interface IWindowProps {
     background: string;
     isVisible: boolean;
     onCloseClick: () => void;
+    initialTop: number;
 }
 
 export class Window extends React.Component<IWindowProps, {}> {
@@ -112,6 +113,7 @@ export class Window extends React.Component<IWindowProps, {}> {
                      width: this.props.width + 'px',
                      border: '2px solid #607d8b',
                      background: this.props.background,
+                     top: this.props.initialTop,
                      margin: '0 auto', //** For initial centering, expect WindowContainer to destroy
                      position: 'relative' //** Expect WindowContainer to change to absolute
                  }}>
@@ -125,7 +127,7 @@ export class Window extends React.Component<IWindowProps, {}> {
                          display: 'flex',
                          justifyContent: 'space-between'
                      }}>
-                    <div>{this.props.title}</div>
+                    <div className='kaze-drag-trigger'>{this.props.title}</div>
                     <button onClick={this.props.onCloseClick}>X</button>
                 </div>
 
@@ -179,7 +181,7 @@ export class ListMenu extends React.Component<IListMenuProps, {}> {
 }
 
 export interface ILoginProps {
-    onNameChange: (s: string) => void;
+    onAccept: (s: string) => void;
 }
 
 export interface ILoginState {
@@ -187,21 +189,46 @@ export interface ILoginState {
 }
 
 export class Login extends React.Component<ILoginProps, ILoginState> {
+    private nameInput: HTMLInputElement | null;
+
     constructor(props: ILoginProps) {
         super(props);
         this.state = {name: 'Henry'};
     }
 
+    componentDidUpdate() {
+        if (this.nameInput !== null) this.nameInput.focus();
+    }
+
+    componentDidMount() {
+        if (this.nameInput !== null) this.nameInput.focus();
+    }
+
     onNameChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
         this.setState({name: e.target.value});
-        this.props.onNameChange(e.target.value);
+    }
+
+    onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+        if (e.keyCode === 13) { // Enter
+            this.props.onAccept(this.state.name);
+        }
+    }
+
+    onFocus = (e: React.FocusEvent<HTMLInputElement>): void => {
+        e.currentTarget.selectionEnd = e.currentTarget.value.length;
+        e.currentTarget.selectionStart = e.currentTarget.value.length;
     }
 
     render(): JSX.Element {
         return (
             <div>
                 <label>Enter name:</label>
-                <input value={this.state.name} onChange={this.onNameChange} />
+                <input value={this.state.name} 
+                       ref={(e) => this.nameInput = e}
+                       onChange={this.onNameChange} 
+                       onFocus={this.onFocus}
+                       onKeyDown={this.onKeyDown} />
+                <button onClick={() => this.props.onAccept(this.state.name)}>OK</button>
             </div>
         );
     }
