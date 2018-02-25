@@ -2,6 +2,9 @@ import React = require('react');
 import Calcs = require('./calcs');
 import Vec2d = Calcs.Vec2d;
 
+require('materialize-css/dist/css/materialize.min.css');
+require('materialize-css/dist/js/materialize.min.js');
+
 export interface ICanvasProps {
     id: string;
     width: string;
@@ -42,14 +45,14 @@ export class WindowContainer extends React.Component<{}, {}> {
         if (e.button !== 0) return; // Left button
         if (e.target instanceof HTMLDivElement) {
             const targetElement = e.target as HTMLDivElement;
-            if (targetElement.className.indexOf('drag-trigger') > -1) { // eg. Title bar
+            if (targetElement.className.indexOf('kaze-drag-trigger') > -1) { // eg. Title bar
                 const bounding = targetElement.getBoundingClientRect();
 
                 let dragTargetCandidate: HTMLElement | null = targetElement;
                 while (true) {
                     dragTargetCandidate = dragTargetCandidate.parentElement;
                     if (dragTargetCandidate === null) return; // Nothing to drag
-                    if (dragTargetCandidate.className.indexOf('drag-target') > -1) break; // eg. Window
+                    if (dragTargetCandidate.className.indexOf('kaze-drag-target') > -1) break; // eg. Window
                 }
                 this.draggedElement = dragTargetCandidate;
                 this.elementStartDragPos.x = e.clientX - bounding.left;
@@ -60,6 +63,8 @@ export class WindowContainer extends React.Component<{}, {}> {
 
     onMouseMove = (e: React.MouseEvent<Element>): void => {
         if (this.draggedElement !== null) {
+            this.draggedElement.style.margin = ''; // Initial centering -> custom positioning
+            this.draggedElement.style.position = 'absolute';
             this.draggedElement.style.left = (e.clientX - this.elementStartDragPos.x).toString();
             this.draggedElement.style.top = (e.clientY - this.elementStartDragPos.y).toString();
         }
@@ -101,32 +106,34 @@ export class Window extends React.Component<IWindowProps, {}> {
 
     render(): JSX.Element {
         return (
-            <div className='drag-target'
+            <div className='kaze-drag-target'
                  style={{
                      visibility: this.props.isVisible ? 'visible' : 'collapse',
-                     position: 'absolute',
                      width: this.props.width + 'px',
                      border: '2px solid #607d8b',
                      background: this.props.background,
-                     left: '0px',
-                     top: '0px'
+                     margin: '0 auto', //** For initial centering, expect WindowContainer to destroy
+                     position: 'relative' //** Expect WindowContainer to change to absolute
                  }}>
 
-                <div className='drag-trigger' // Title bar
+                <div className='kaze-drag-trigger' // Title bar
                      style={{
-                         background: 'white',
-                         fontFamily: 'monospace',
+                         background: 'rgb(233,236,240)',
                          fontSize: '12pt',
                          padding: '3px',
-                         userSelect: 'none'
+                         userSelect: 'none',
+                         display: 'flex',
+                         justifyContent: 'space-between'
                      }}>
-                    {this.props.title}
-                    <button style={{float: 'right'}}
-                            onClick={this.props.onCloseClick}>X</button>
+                    <div>{this.props.title}</div>
+                    <button onClick={this.props.onCloseClick}>X</button>
                 </div>
 
                 <div style={{ // Content
-                         padding: '5px'
+                         paddingLeft: '5px',
+                         paddingRight: '5px',
+                         paddingBottom: '5px',
+                         paddingTop: '15px'
                      }}>
                     {this.props.children}
                 </div>
@@ -156,7 +163,6 @@ export class ListMenu extends React.Component<IListMenuProps, {}> {
             return (
                 <button style={{
                             display: 'block',
-                            fontFamily: 'monospace',
                             width: '100%'
                         }}
                         onClick={item.onClick}
@@ -168,6 +174,35 @@ export class ListMenu extends React.Component<IListMenuProps, {}> {
 
         return (
             <div>{items}</div>
+        );
+    }
+}
+
+export interface ILoginProps {
+    onNameChange: (s: string) => void;
+}
+
+export interface ILoginState {
+    name: string;
+}
+
+export class Login extends React.Component<ILoginProps, ILoginState> {
+    constructor(props: ILoginProps) {
+        super(props);
+        this.state = {name: 'Henry'};
+    }
+
+    onNameChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+        this.setState({name: e.target.value});
+        this.props.onNameChange(e.target.value);
+    }
+
+    render(): JSX.Element {
+        return (
+            <div>
+                <label>Enter name:</label>
+                <input value={this.state.name} onChange={this.onNameChange} />
+            </div>
         );
     }
 }

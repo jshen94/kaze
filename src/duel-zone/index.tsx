@@ -79,16 +79,28 @@ $(document.body).append($root);
 
 interface IEverythingState {
     isStoreShown: boolean;
+    isLoginShown: boolean;
 }
 
 class Everything extends React.Component<{}, IEverythingState> {
+    private loginName: string;
+
     constructor(props: {}) {
         super(props);
-        this.state = {isStoreShown: true};
+        this.state = {isStoreShown: false, isLoginShown: true};
     }
 
     onStoreClosed = (): void => {
         this.setState({isStoreShown: false});
+    }
+
+    onLoginClose = (): void => {
+        this.setState({isLoginShown: false});
+        setupAndConnect(this, this.loginName);
+    }
+
+    onLoginNameChange = (name: string): void => {
+        this.loginName = name;
     }
 
     render(): JSX.Element {
@@ -97,8 +109,8 @@ class Everything extends React.Component<{}, IEverythingState> {
                 <Components.Canvas id='my-canvas'
                                    width={Shared.ViewportWidth + 'px'}
                                    height={Shared.ViewportHeight + 'px'}
-                                   isVisible={true}
-                />
+                                   isVisible={true} />
+
                 <Components.Window title='Weapons'
                                    background='white'
                                    width={500}
@@ -108,6 +120,14 @@ class Everything extends React.Component<{}, IEverythingState> {
                     <Components.ListMenu items={[{text: 'Fenrir', onClick: () => alert(3)},
                                                  {text: 'RR', onClick: () => alert(3)},
                                                  {text: 'Power Armour', onClick: () => alert(3)}]} />
+                </Components.Window>
+
+                <Components.Window title='Login'
+                                   background='white'
+                                   width={500}
+                                   onCloseClick={this.onLoginClose}
+                                   isVisible={this.state.isLoginShown}>
+                    <Components.Login onNameChange={this.onLoginNameChange} />
                 </Components.Window>
             </Components.WindowContainer>
         );
@@ -120,170 +140,173 @@ ReactDOM.render(
 
 //////////////////////////////////////////////////
 
-const promptName = prompt('Enter name:', 'Henry') || 'Faker';
-const url = DuelZoneSettings === null ? 'ws://127.0.0.1:1337' : DuelZoneSettings.defaultGameUrl;
+function setupAndConnect(component: Everything, promptName: string) {
+    const url = DuelZoneSettings === null ? 'ws://127.0.0.1:1337' : DuelZoneSettings.defaultGameUrl;
 
-const canvas = document.getElementById('my-canvas');
-if (canvas === null) throw new Error('canvas not found');
+    const canvas = document.getElementById('my-canvas');
+    if (canvas === null) throw new Error('canvas not found');
 
-const detachedControls = new Controls.Controls();
-detachedControls.register(canvas);
+    const detachedControls = new Controls.Controls();
+    detachedControls.register(canvas);
 
-const playerT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./black.png'], 1, 1); // Webpack prefixes with ./
+    const playerT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./black.png'], 1, 1); // Webpack prefixes with ./
 
-const grid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson, imageFileToSpriteSheet, 'floor.png');
-const dsGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedDsMapJson, imageFileToSpriteSheet, 'floor.png');
+    const grid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedMapJson, imageFileToSpriteSheet, 'floor.png');
+    const dsGrid = FloorTileGrid.FloorTileGrid.fromMapFile(parsedDsMapJson, imageFileToSpriteSheet, 'floor.png');
 
-const explosionT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./explosion.png'], 2, 2);
-explosionT.tickInterval = 99;
-explosionT.autoTick = true;
-Shared.boom.spriteSheet = explosionT; // Since client side, add the sprite in
+    const explosionT = new Draw.AnimatedSpriteSheet(imageFileToUrl['./explosion.png'], 2, 2);
+    explosionT.tickInterval = 99;
+    explosionT.autoTick = true;
+    Shared.boom.spriteSheet = explosionT; // Since client side, add the sprite in
 
-const getFloorDs = FloorTileGrid.makeGetFloorTilePattern(dsGrid);
-const getFloor = FloorTileGrid.makeGetFloorTileRegion(grid);
-const getBarrDs = FloorTileGrid.makeGetBarrierTypePattern(dsGrid);
-const getBarr = FloorTileGrid.makeGetBarrierTypeRegion(grid);
+    const getFloorDs = FloorTileGrid.makeGetFloorTilePattern(dsGrid);
+    const getFloor = FloorTileGrid.makeGetFloorTileRegion(grid);
+    const getBarrDs = FloorTileGrid.makeGetBarrierTypePattern(dsGrid);
+    const getBarr = FloorTileGrid.makeGetBarrierTypeRegion(grid);
 
-const bigGrid = FloorTileGrid.combine([
-    [VirtualFloorTileGrid.getEmpty(3, 3), new VirtualFloorTileGrid(dsGrid.blockWidth * 2, dsGrid.blockHeight * 2, getBarrDs, getFloorDs)],
-    [VirtualFloorTileGrid.getEmpty(3, 3)],
-    [new VirtualFloorTileGrid(grid.blockWidth, grid.blockHeight, getBarr, getFloor)]
-]);
+    const bigGrid = FloorTileGrid.combine([
+        [VirtualFloorTileGrid.getEmpty(3, 3), new VirtualFloorTileGrid(dsGrid.blockWidth * 2, dsGrid.blockHeight * 2, getBarrDs, getFloorDs)],
+        [VirtualFloorTileGrid.getEmpty(3, 3)],
+        [new VirtualFloorTileGrid(grid.blockWidth, grid.blockHeight, getBarr, getFloor)]
+    ]);
 
-const sceneData = Shared.makeSceneData();
-sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(bigGrid);
-sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(bigGrid);
+    const sceneData = Shared.makeSceneData();
+    sceneData.getFloorTile = FloorTileGrid.makeGetFloorTileRegion(bigGrid);
+    sceneData.getBarrierType = FloorTileGrid.makeGetBarrierTypeRegion(bigGrid);
 
-sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
-    return true; // Make bullet disappear
-};
+    sceneData.onNetCharacterBulletHit = (controller, character, bullet) => {
+        return true; // Make bullet disappear
+    };
 
-sceneData.onBegin = (controller: GameScene.Controller): void => {
-    let ticker = 0;
-    const timeBox = new GameScene.UiBox(['Testing 123'], 5, 5, 150);
-    controller.uiBoxes.push(timeBox);
-    setInterval(() => {
-        ticker++;
-        timeBox.lines[0] = ticker.toString();
-    }, 1000);
-};
+    sceneData.onBegin = (controller: GameScene.Controller): void => {
+        let ticker = 0;
+        const timeBox = new GameScene.UiBox(['Testing 123'], 5, 5, 150);
+        controller.uiBoxes.push(timeBox);
+        setInterval(() => {
+            ticker++;
+            timeBox.lines[0] = ticker.toString();
+        }, 1000);
+    };
 
-const scene = GameScene.createGameScene(sceneData);
+    const scene = GameScene.createGameScene(sceneData);
 
-const addCharacter = (attributes: KazeShared.CharacterInit): DuelZoneNetCharacter => {
-    const character = new DuelZoneNetCharacter(
-        attributes.id, attributes.name,
-        Shared.CharacterWidth, Shared.CharacterHeight
-    );
-    character.spriteSheets = [playerT];
-    character.spriteSheetIndex = 0;
-    scene.controller.grid.registerRect(character);
-    return character;
-};
+    const addCharacter = (attributes: KazeShared.CharacterInit): DuelZoneNetCharacter => {
+        const character = new DuelZoneNetCharacter(
+            attributes.id, attributes.name,
+            Shared.CharacterWidth, Shared.CharacterHeight
+        );
+        character.spriteSheets = [playerT];
+        character.spriteSheetIndex = 0;
+        scene.controller.grid.registerRect(character);
+        return character;
+    };
 
-const deleteCharacter = (id: number): void => {
-    scene.controller.grid.unregisterRect(id);
-};
+    const deleteCharacter = (id: number): void => {
+        scene.controller.grid.unregisterRect(id);
+    };
 
-const spawnBullet = (
-    owner: GameScene.NetworkedCharacter, weapon: GameScene.Weapon,
-    x: number, y: number, vx: number, vy: number
-): void => {
-    const bullet = new GameScene.Bullet(owner, weapon, new Calcs.Vec2d(vx, vy), new Calcs.Vec2d(x, y));
-    scene.controller.grid.registerDot(bullet);
-};
+    const spawnBullet = (
+        owner: GameScene.NetworkedCharacter, weapon: GameScene.Weapon,
+        x: number, y: number, vx: number, vy: number
+    ): void => {
+        const bullet = new GameScene.Bullet(owner, weapon, new Calcs.Vec2d(vx, vy), new Calcs.Vec2d(x, y));
+        scene.controller.grid.registerDot(bullet);
+    };
 
-const spawnExplosion = (
-    owner: GameScene.NetworkedCharacter, explosionType: GameScene.ExplosionType,
-    x: number, y: number
-): void => {
-    const explosion = new GameScene.Explosion(owner, explosionType, x, y);
-    scene.controller.grid.registerRect(explosion);
-};
+    const spawnExplosion = (
+        owner: GameScene.NetworkedCharacter, explosionType: GameScene.ExplosionType,
+        x: number, y: number
+    ): void => {
+        const explosion = new GameScene.Explosion(owner, explosionType, x, y);
+        scene.controller.grid.registerRect(explosion);
+    };
 
-const getWeapon = (id: number): GameScene.Weapon => {
-    if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
-    else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
-    else if (id === Shared.rocketWeapon.id) return Shared.rocketWeapon;
-    else throw new Error('weapon not supported');
-};
+    const getWeapon = (id: number): GameScene.Weapon => {
+        if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
+        else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
+        else if (id === Shared.rocketWeapon.id) return Shared.rocketWeapon;
+        else throw new Error('weapon not supported');
+    };
 
-const getExplosionType = (id: number): GameScene.ExplosionType => {
-    if (id === Shared.boom.id) return Shared.boom;
-    else throw new Error('explosion type not supported');
-};
+    const getExplosionType = (id: number): GameScene.ExplosionType => {
+        if (id === Shared.boom.id) return Shared.boom;
+        else throw new Error('explosion type not supported');
+    };
 
-const onError = (e: Event): void => {
-    alert('ERROR');
-    throw e;
-};
+    const onError = (e: Event): void => {
+        alert('ERROR');
+        throw e;
+    };
 
-const onClose = (): void => {
-    alert('DISCONNECTED');
-};
+    const onClose = (): void => {
+        alert('DISCONNECTED');
+    };
 
-const onConnect = (result: KazeClient.IOnConnectResult): void => {
-    const player = result.characterMap.get(result.playerId);
-    if (player === undefined) throw new Error('player not found in character map');
+    const onConnect = (result: KazeClient.IOnConnectResult): void => {
+        const player = result.characterMap.get(result.playerId);
+        if (player === undefined) throw new Error('player not found in character map');
 
-    sceneData.camera = () => player.position;
-    sceneData.cameraOffset = Calcs.Vec2d.mult(player.size, 0.5);
+        sceneData.camera = () => player.position;
+        sceneData.cameraOffset = Calcs.Vec2d.mult(player.size, 0.5);
 
-    result.messageHandler.on({id: '@kdInit', func: (json: any) => {
-        json.entries.forEach(([id, kills, deaths]: [number, number, number]) => {
-            const character_ = result.characterMap.get(id);
-            if (character_ === undefined) {
-                console.warn('server giving kds of characters not in map');
+        result.messageHandler.on({id: '@kdInit', func: (json: any) => {
+            json.entries.forEach(([id, kills, deaths]: [number, number, number]) => {
+                const character_ = result.characterMap.get(id);
+                if (character_ === undefined) {
+                    console.warn('server giving kds of characters not in map');
+                    return;
+                }
+
+                const character = character_ as DuelZoneNetCharacter;
+                character.data.kills = kills;
+                character.data.deaths = deaths;
+                character.refreshName();
+            });
+        }});
+
+        result.messageHandler.on({id: '@updateKd', func: (json: any) => {
+            if (!_.isNumber(json.id) || !_.isNumber(json.kills) || !_.isNumber(json.deaths)) {
+                console.warn('kd data not numbers');
                 return;
             }
 
-            const character = character_ as DuelZoneNetCharacter;
-            character.data.kills = kills;
-            character.data.deaths = deaths;
+            const character = result.characterMap.get(json.id) as DuelZoneNetCharacter;
+            character.data.kills = json.kills;
+            character.data.deaths = json.deaths;
             character.refreshName();
-        });
-    }});
+        }});
 
-    result.messageHandler.on({id: '@updateKd', func: (json: any) => {
-        if (!_.isNumber(json.id) || !_.isNumber(json.kills) || !_.isNumber(json.deaths)) {
-            console.warn('kd data not numbers');
-            return;
-        }
+        detachedControls.onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'e' && scene.controller.uiBoxes.length === 1) {
+                scene.controller.uiBoxes.push(new GameScene.UiBox([
+                    '[Weapon list]', '1) Sterilizer', '2) Purifier', '3) Snub Cannon'
+                ], Math.random() * 50, Math.random() * 50, 250));
+            } else if (e.key === 'p') {
+                component.setState({isStoreShown: true});
+            }
+        };
+        detachedControls.onKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'e' && scene.controller.uiBoxes.length === 2) {
+                scene.controller.uiBoxes.splice(1, 1);
+            }
+        };
 
-        const character = result.characterMap.get(json.id) as DuelZoneNetCharacter;
-        character.data.kills = json.kills;
-        character.data.deaths = json.deaths;
-        character.refreshName();
-    }});
-
-    detachedControls.onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'e' && scene.controller.uiBoxes.length === 1) {
-            scene.controller.uiBoxes.push(new GameScene.UiBox([
-                '[Weapon list]', '1) Sterilizer', '2) Purifier', '3) Snub Cannon'
-            ], Math.random() * 50, Math.random() * 50, 250));
-        }
-    };
-    detachedControls.onKeyUp = (e: KeyboardEvent) => {
-        if (e.key === 'e' && scene.controller.uiBoxes.length === 2) {
-            scene.controller.uiBoxes.splice(1, 1);
-        }
+        const canvasCasted = canvas as HTMLCanvasElement;
+        Scene.playScene({fps: 60, canvas: canvasCasted, scene});
     };
 
-    const canvasCasted = canvas as HTMLCanvasElement;
-    Scene.playScene({fps: 60, canvas: canvasCasted, scene});
-};
-
-KazeClient.connectToServer({
-    url,
-    onConnect,
-    onError,
-    onClose,
-    detachedControls,
-    addCharacter,
-    deleteCharacter,
-    spawnBullet,
-    spawnExplosion,
-    getWeapon,
-    getExplosionType,
-    name: promptName
-});
+    KazeClient.connectToServer({
+        url,
+        onConnect,
+        onError,
+        onClose,
+        detachedControls,
+        addCharacter,
+        deleteCharacter,
+        spawnBullet,
+        spawnExplosion,
+        getWeapon,
+        getExplosionType,
+        name: promptName
+    });
+}

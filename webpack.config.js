@@ -2,6 +2,7 @@ const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
+const ClosureCompilerPlugin = require('webpack-closure-compiler');
 
 module.exports = {
     entry: {
@@ -24,6 +25,14 @@ module.exports = {
            filename: 'editor.html',
             chunks: ['map-editor'],
             template: path.resolve(__dirname, 'src/map-editor/template.html')
+        }),
+        new ClosureCompilerPlugin({
+            compiler: {
+                language_in: 'ECMASCRIPT6',
+                language_out: 'ECMASCRIPT5',
+                compilation_level: 'SIMPLE'
+            },
+            concurrency: 3,
         })
     ],
     resolve: {

@@ -12,6 +12,7 @@ next to-do:
 - a simple test zone
 - loading screen helpers in react (ie. when importing maps or connecting)
 - uncomment AI
+- server minify
 
 ![alt text](screenshot.png)
 ![alt text](screenshot2.png)
