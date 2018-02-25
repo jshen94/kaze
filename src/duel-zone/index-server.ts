@@ -65,7 +65,7 @@ rocketWeapon.bulletLength = 10;
 rocketWeapon.requireStationary = true;
 
 export const sniperWeapon = new GameScene.Weapon();
-sniperWeapon.damage = 200;
+sniperWeapon.damage = 600;
 sniperWeapon.lifetime = 2000;
 sniperWeapon.speed = .55;
 sniperWeapon.shots = 1;
@@ -75,7 +75,6 @@ sniperWeapon.prefire = 800;
 sniperWeapon.bulletShape = GameScene.BulletShape.Line;
 sniperWeapon.bulletLength = 15;
 sniperWeapon.requireStationary = true;
-
 
 export class DuelZoneCharacterData {
     kills: number = 0;

@@ -226,6 +226,7 @@ function setupAndConnect(component: Everything, promptName: string) {
         if (id === Shared.burstWeapon.id) return Shared.burstWeapon;
         else if (id === Shared.autoWeapon.id) return Shared.autoWeapon;
         else if (id === Shared.rocketWeapon.id) return Shared.rocketWeapon;
+        else if (id === Shared.sniperWeapon.id) return Shared.sniperWeapon;
         else throw new Error('weapon not supported');
     };
 
